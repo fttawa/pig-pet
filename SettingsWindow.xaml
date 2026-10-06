@@ -1,0 +1,89 @@
+<Window x:Class="PigPet.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="小猪设置" Width="440" Height="720" WindowStartupLocation="CenterScreen"
+        Background="#FFF8F9" FontFamily="Microsoft YaHei" FontSize="13" Icon="assets/pig_1f416.png">
+    <Window.Resources>
+        <Style x:Key="H" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#D0627C" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,14,0,4" />
+        </Style>
+        <Style TargetType="Slider">
+            <Setter Property="Width" Value="170" />
+            <Setter Property="IsSnapToTickEnabled" Value="True" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="DockPanel">
+            <Setter Property="Margin" Value="0,3" />
+            <Setter Property="LastChildFill" Value="False" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="0,7" />
+            <Setter Property="Margin" Value="4,0" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="18,8,18,12" LastChildFill="True">
+        <TextBlock x:Name="Msg" DockPanel.Dock="Bottom" Foreground="#3A9A5A" HorizontalAlignment="Center" Height="20" />
+        <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="0,8,0,0">
+            <Button x:Name="ResetBtn" Content="恢复默认" Background="#DDD" />
+            <Button x:Name="SaveBtn" Content="保存" Background="#F3A3B5" Foreground="White" />
+        </UniformGrid>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="assets/pig_1f416.png" Width="34" />
+                    <TextBlock Text="小猪设置" FontSize="18" VerticalAlignment="Center" Margin="8,0" />
+                </StackPanel>
+
+                <TextBlock Text="外观" Style="{StaticResource H}" />
+                <DockPanel><TextBlock Text="大小" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=SizeS}" />
+                    <Slider x:Name="SizeS" DockPanel.Dock="Right" Minimum="64" Maximum="320" TickFrequency="8" /></DockPanel>
+                <DockPanel><TextBlock Text="透明度" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=OpacityS, StringFormat=0.00}" />
+                    <Slider x:Name="OpacityS" DockPanel.Dock="Right" Minimum="0.2" Maximum="1" TickFrequency="0.05" /></DockPanel>
+                <DockPanel><TextBlock Text="动作速度" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=SpeedS, StringFormat=0.0}" />
+                    <Slider x:Name="SpeedS" DockPanel.Dock="Right" Minimum="0.3" Maximum="3" TickFrequency="0.1" /></DockPanel>
+
+                <TextBlock Text="行为" Style="{StaticResource H}" />
+                <DockPanel><TextBlock Text="动作间隔（秒）" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <TextBox x:Name="IntMin" Width="50" /><TextBlock Text=" ~ " /><TextBox x:Name="IntMax" Width="50" />
+                    </StackPanel></DockPanel>
+                <DockPanel><TextBlock Text="无互动多久后犯困（秒）" /><TextBox x:Name="SleepAfter" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <Grid x:Name="ActionsGrid" Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                </Grid>
+
+                <TextBlock Text="表情包形态（参与随机）" Style="{StaticResource H}" />
+                <WrapPanel x:Name="FormsPanel" />
+
+                <TextBlock Text="物理" Style="{StaticResource H}" />
+                <DockPanel><TextBlock Text="重力" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=GravityS, StringFormat=0}" />
+                    <Slider x:Name="GravityS" DockPanel.Dock="Right" Minimum="500" Maximum="6000" TickFrequency="100" /></DockPanel>
+                <DockPanel><TextBlock Text="弹性" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=BounceS, StringFormat=0.00}" />
+                    <Slider x:Name="BounceS" DockPanel.Dock="Right" Minimum="0" Maximum="0.9" TickFrequency="0.05" /></DockPanel>
+                <DockPanel><TextBlock Text="地面摩擦" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=FrictionS, StringFormat=0.0}" />
+                    <Slider x:Name="FrictionS" DockPanel.Dock="Right" Minimum="0.5" Maximum="8" TickFrequency="0.5" /></DockPanel>
+                <DockPanel><TextBlock Text="甩出力度" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=ThrowS, StringFormat=0.0}" />
+                    <Slider x:Name="ThrowS" DockPanel.Dock="Right" Minimum="0" Maximum="2" TickFrequency="0.1" /></DockPanel>
+
+                <TextBlock Text="猪群" Style="{StaticResource H}" />
+                <DockPanel><TextBlock Text="最多几只（自我复制 / 多开）" /><TextBox x:Name="MaxPetsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <TextBlock Text="再次运行程序会从天上掉下一只新猪" Foreground="#999" />
+
+                <TextBlock Text="窗口" Style="{StaticResource H}" />
+                <CheckBox x:Name="TopC" Content="总在最前" Margin="0,3" />
+                <CheckBox x:Name="ThroughC" Content="点击穿透（可在托盘菜单关闭）" Margin="0,3" />
+                <CheckBox x:Name="AutoC" Content="开机自启" Margin="0,3" />
+
+                <TextBlock Text="气泡" Style="{StaticResource H}" />
+                <CheckBox x:Name="BubbleC" Content="显示气泡" Margin="0,3" />
+                <TextBox x:Name="BubblesT" AcceptsReturn="True" Height="90" VerticalScrollBarVisibility="Auto" Margin="0,4" />
+                <TextBlock Text="每行一句" Foreground="#999" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
