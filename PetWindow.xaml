@@ -5,7 +5,11 @@
         ShowInTaskbar="False" ResizeMode="NoResize" Topmost="True" Width="256" Height="256">
     <Canvas x:Name="Root">
         <!-- 小猪本体：底部居中 -->
-        <Grid x:Name="Pig" Cursor="Hand" Background="Transparent">
+        <Grid x:Name="Pig" Cursor="Hand" Background="Transparent" RenderTransformOrigin="0.5,1">
+            <!-- 体重（变胖）和被背上的猪压扁 -->
+            <Grid.RenderTransform>
+                <ScaleTransform x:Name="BodyScale" />
+            </Grid.RenderTransform>
             <!-- 身后且不镜像的图层（比如带代码文字的电脑） -->
             <Viewbox IsHitTestVisible="False">
                 <Canvas x:Name="Behind" Width="512" Height="512" ClipToBounds="False" />

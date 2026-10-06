@@ -25,11 +25,23 @@ public class Config
     public double Friction { get; set; } = 2.5;    // 地面摩擦
     public double ThrowStrength { get; set; } = 1; // 甩出力度倍率
     public int MaxPets { get; set; } = 6;          // 猪群上限
+    public bool WindowCollision { get; set; } = true; // 能站在其他程序的窗口上
+    public bool VisualLedges { get; set; } = true;    // 全屏 / 最大化窗口里看画面找能站的边缘
+    public bool ElementLedges { get; set; } = true;   // 优先用 UI Automation 读取元素位置
+    public double LedgeThreshold { get; set; } = 40;  // 画面边缘的亮度差阈值，越小越容易站
     public int FpsLimit { get; set; }              // 动画帧率上限，0 = 跟随屏幕刷新率
     public bool HpEnabled { get; set; } = true;    // 隐藏血条：摔太狠会死
     public double MaxHp { get; set; } = 100;       // 耐摔程度
     public double HpRegen { get; set; } = 3;       // 每秒回血
     public bool ShowHpBar { get; set; }            // 受伤时短暂显示血条
+    public bool HungerEnabled { get; set; } = true;  // 会饿、会自己找吃的
+    public double HungerRate { get; set; } = 4;      // 每分钟掉多少饱食度（满 100）
+    public bool WeightEnabled { get; set; } = true;  // 体重：吃了长肉，越胖越抗揍、越难拎
+    public double StartWeight { get; set; } = 30;    // 新猪的体重（kg）
+    public bool FoodBar { get; set; } = true;        // 显示食物悬浮栏
+    public double? FoodBarX { get; set; }            // 悬浮栏位置（DIP），null = 默认右上
+    public double? FoodBarY { get; set; }
+    public double HeavyWeight { get; set; } = 60;    // 超过这个重量（含背上的猪）拎着会手滑
     public bool AlwaysOnTop { get; set; } = true;
     public bool ClickThrough { get; set; }
     public bool AutoStart { get; set; }

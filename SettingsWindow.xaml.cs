@@ -45,8 +45,11 @@ public partial class SettingsWindow : Window
         FpsT.Text = c.FpsLimit.ToString();
         FpsInfo.Text = $"屏幕刷新率 {Perf.MonitorHz}Hz，当前动画帧率 {Perf.EffectiveFps}，硬件加速级别 {System.Windows.Media.RenderCapability.Tier >> 16}（2 = 完整加速）";
         HpC.IsChecked = c.HpEnabled; MaxHpS.Value = c.MaxHp; ShowHpC.IsChecked = c.ShowHpBar;
+        HungerC.IsChecked = c.HungerEnabled; HungerS.Value = c.HungerRate; WeightC.IsChecked = c.WeightEnabled;
+        StartWeightT.Text = c.StartWeight.ToString(); HeavyT.Text = c.HeavyWeight.ToString();
         GravityS.Value = c.Gravity; BounceS.Value = c.Bounce; FrictionS.Value = c.Friction; ThrowS.Value = c.ThrowStrength;
-        TopC.IsChecked = c.AlwaysOnTop; ThroughC.IsChecked = c.ClickThrough; AutoC.IsChecked = c.AutoStart;
+        TopC.IsChecked = c.AlwaysOnTop; CollideC.IsChecked = c.WindowCollision;
+        VisualC.IsChecked = c.VisualLedges; LedgeS.Value = c.LedgeThreshold; ElementC.IsChecked = c.ElementLedges; ThroughC.IsChecked = c.ClickThrough; AutoC.IsChecked = c.AutoStart;
         BubbleC.IsChecked = c.ShowBubbles;
         BubblesT.Text = string.Join(Environment.NewLine, c.Bubbles);
         foreach (CheckBox cb in FormsPanel.Children)
@@ -70,8 +73,11 @@ public partial class SettingsWindow : Window
         c.MaxPets = (int)Math.Min(PetBrain.HardMaxPets, Num(MaxPetsT.Text, c.MaxPets, 1));
         c.FpsLimit = (int)Math.Min(360, Num(FpsT.Text, 0, 0));
         c.HpEnabled = HpC.IsChecked == true; c.MaxHp = MaxHpS.Value; c.ShowHpBar = ShowHpC.IsChecked == true;
+        c.HungerEnabled = HungerC.IsChecked == true; c.HungerRate = HungerS.Value; c.WeightEnabled = WeightC.IsChecked == true;
+        c.StartWeight = Math.Min(200, Num(StartWeightT.Text, c.StartWeight, 10)); c.HeavyWeight = Num(HeavyT.Text, c.HeavyWeight, 10);
         c.Gravity = GravityS.Value; c.Bounce = BounceS.Value; c.Friction = FrictionS.Value; c.ThrowStrength = ThrowS.Value;
-        c.AlwaysOnTop = TopC.IsChecked == true; c.ClickThrough = ThroughC.IsChecked == true;
+        c.AlwaysOnTop = TopC.IsChecked == true; c.WindowCollision = CollideC.IsChecked == true;
+        c.VisualLedges = VisualC.IsChecked == true; c.LedgeThreshold = LedgeS.Value; c.ElementLedges = ElementC.IsChecked == true; c.ClickThrough = ThroughC.IsChecked == true;
         c.AutoStart = AutoC.IsChecked == true; c.ShowBubbles = BubbleC.IsChecked == true;
         c.Bubbles = BubblesT.Text.Split('\n').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
         foreach (var (name, ui) in _acts)

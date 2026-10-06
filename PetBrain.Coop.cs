@@ -18,8 +18,7 @@ public partial class PetBrain
     string _current = "";  // 正在执行的动作
 
     /// <summary>空闲、站在地上、没被拖着，才能被别的猪拉来合作。</summary>
-    public bool CoopReady => !_dragging && !_paused && _current is "lazy" or "idle" or "walk" or "" &&
-                             w.Top >= w.MaxY - 2;
+    public bool CoopReady => !_dragging && !_paused && _current is "lazy" or "idle" or "walk" or "" && IsGrounded && !IsRiding && !HasRider;
 
     /// <summary>被别的猪邀请参与合作动作（打断自己当前动作）。</summary>
     public void Invite(string action, PetWindow partner)
@@ -146,58 +145,53 @@ public partial class PetBrain
         await Greet(other, ct);
     }
 
-    // ---------- 叠罗汉：爬到别的猪身上睡觉 ----------
+    // ---------- 叠罗汉：跳到别的猪背上睡觉（可以往一摞猪的最上面叠） ----------
     async Task Pile(CancellationToken ct)
     {
-        var target = Herd.Nearest(w, p => p.Brain.CoopReady);
+        var target = Herd.Nearest(w, CanPileOn);
         if (target == null) { await Lazy(ct); return; }
         if (!await WalkTo(target, Size * 0.9, 8, ct)) return;
-        if (!target.Brain.CoopReady) return;
+        if (!CanPileOn(target)) return;
+        if (target.Brain.CoopReady) target.Brain.Invite("beneath", w);
 
-        target.Brain.Invite("beneath", w);
-        // 起跳落到对方背上
-        double x0 = w.Left, y0 = w.Top, x1 = target.Left, y1 = target.Top - Size * 0.55;
-        await Animate(0.7, (t, _) =>
+        // 跳上去：落点交给物理判定，没跳准就摔下来
+        w.SetDir(target.PosX > w.PosX ? 1 : -1);
+        double feetY = w.PosY + w.Height - Size * 0.08;
+        double back = target.PosY + target.Height - Size * 0.08 - target.Brain.BackHeight;
+        _throw = Ballistic(target.PosX - w.PosX, feetY - back);
+        // 往上跳的途中会穿过对方身体：别当成相撞
+        IgnoreCollision(target, 2);
+        target.Brain.IgnoreCollision(w, 2);
+        await Fall(ct);
+        if (Base != target)
         {
-            double p = t / 0.7;
-            w.MoveRaw(x0 + (x1 - x0) * p, y0 + (y1 - y0) * p - Size * 0.8 * 4 * p * (1 - p));
-        }, ct);
-        w.MoveRaw(x1, y1);
+            if (target.IsLoaded && target.Brain._current == "beneath") target.Brain.Play("lazy");
+            return;
+        }
         w.SetDir(target.Dir);
-        await Squash(ct);
 
         // 在群友身上睡觉：自己闭眼，下面那只被压成 ××
         w.OverrideFrame = w.RestFrame;
         Forms.ClosedEyes(w.Props);
         w.Say("在群友身上睡觉", 2500);
-        double tx = target.Left, ty = target.Top, nextZ = 1;
-        bool supportMoved = false;
+        double nextZ = 1, dur = Rand(12, 20), slept = 0;
         try
         {
-            await Animate(Rand(12, 20), (t, _) =>
+            // 睡够了、背上也没别的猪了才起来（背上有猪就接着睡，免得把上面的颠下来），最多 60 秒
+            await Animate(60, (t, _) =>
             {
-                if (supportMoved) return;
+                slept = t;
                 double b = Math.Sin(2 * Math.PI * t / 3.5);
                 w.AScale.ScaleX = 1 + 0.015 * b; w.AScale.ScaleY = 1 - 0.015 * b;
                 if (t >= nextZ) { w.Particle("Z", Blue, w.Dir > 0 ? 0.85 : 0.15); nextZ = t + 1.6; }
-                // 下面那只被拖走或动了：掉下来
-                if (!target.IsLoaded || Math.Abs(target.Left - tx) > 3 || Math.Abs(target.Top - ty) > 3)
-                    supportMoved = true;
-            }, ct, () => supportMoved);
+            }, ct, () => !IsRiding || (slept > dur && !HasRider)); // 掉下来了（下面那只被拖走、动了）
         }
         finally { Forms.Clear(w); }
-        if (supportMoved)
-        {
-            w.Say("哎哟！", 1000);
-            _throw = default;
-            await Fall(ct);
-            return;
-        }
+        if (!IsRiding) return;
 
         // 睡醒跳下来，叫醒下面那只
         if (target.IsLoaded && target.Brain._current == "beneath") target.Brain.Play("lazy");
-        _throw = new Vector(-w.Dir * 300, -600);
-        await Fall(ct);
+        await HopOff(ct);
     }
 
     /// <summary>被压在下面：××眼，偶尔抽一下，直到上面那只离开。</summary>
@@ -412,22 +406,27 @@ public partial class PetBrain
         var me = new Point(x + w.Width / 2, y + w.Height - Size / 2);
         foreach (var o in Herd.Others(w))
         {
-            if (o.Brain._dragging) continue;
+            if (o.Brain._dragging || o.Brain.Base == w || Base == o) continue;
             if (_hitCooldown.TryGetValue(o, out var until) && now < until) continue;
             var d = o.BodyCenter - me;
             double dist = d.Length;
             if (dist > Size * 0.75 || dist < 1) continue;
+            // 从上面落到站着的猪身上：那是叠罗汉，不算撞
+            if (vy >= 0 && d.Y > Size * 0.2 && o.Brain.CanCarry) continue;
             var n = d / dist;
             double approach = vx * n.X + vy * n.Y; // 朝对方的速度分量
             if (approach < 150) continue;
             _hitCooldown[o] = now + 0.4;
             o.Brain.IgnoreCollision(w, 0.4); // 对方也别立刻反撞回来
-            o.Brain.Damage(Math.Max(0, approach - 600) / 25);
-            Damage(Math.Max(0, approach - 600) / 45);
-            // 等质量弹性碰撞（打折）：对方拿走大部分法向动量
-            o.Brain.Knock(new Vector(n.X * approach * 0.8, n.Y * approach * 0.8 - 350));
-            vx -= n.X * approach * 0.9;
-            vy -= n.Y * approach * 0.9;
+            // 按体重分：重的撞轻的，轻的伤得重、飞得远
+            double m1 = Mass, m2 = o.Brain.Mass, ratio = m1 / m2;
+            o.Brain.Damage(Math.Max(0, approach - 600) / 25 * ratio);
+            Damage(Math.Max(0, approach - 600) / 45 / ratio);
+            double give = Math.Clamp(2 * m1 / (m1 + m2), 0.2, 1.8), keep = Math.Clamp(2 * m2 / (m1 + m2), 0.2, 1.5);
+            // 弹性碰撞（打折）：对方拿走大部分法向动量
+            o.Brain.Knock(new Vector(n.X * approach * 0.8 * give, n.Y * approach * 0.8 * give - 350));
+            vx -= n.X * approach * 0.9 * keep;
+            vy -= n.Y * approach * 0.9 * keep;
         }
     }
 
@@ -468,8 +467,17 @@ public partial class PetBrain
     bool CoopAllowed(string action) => action switch
     {
         "clone" => Herd.Count < C.MaxPets,
-        "visit" or "pile" or "chase" or "duel" => Herd.Others(w).Any(p => p.Brain.CoopReady),
+        "visit" or "chase" or "duel" => Herd.Others(w).Any(p => p.Brain.CoopReady),
+        "pile" => Herd.Others(w).Any(CanPileOn),
         "merge" => w.IsClone && Herd.Count > 1,
         _ => true,
     };
+
+    /// <summary>叠罗汉时：背上的猪只做原地的动作；背着猪的不翻滚、不乱跑，免得把上面的颠下来。</summary>
+    bool StackAllowed(string action) =>
+        IsRiding ? action is "lazy" or "idle" or "sleep" or "form" or "shake" or "spin" or "jump"
+        : !HasRider || action is "lazy" or "idle" or "walk" or "sleep" or "form" or "shake";
+
+    /// <summary>能爬上去的猪：站稳了、背上没猪、不在自己脚下；可以是站在别的猪背上的（往上叠）。</summary>
+    bool CanPileOn(PetWindow p) => p.Brain.CanCarry && !p.Brain.HasRider && !p.Brain.StandsOn(w) && (p.Brain.CoopReady || p.Brain.IsRiding);
 }

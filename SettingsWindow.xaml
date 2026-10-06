@@ -76,6 +76,15 @@
                     <Slider x:Name="MaxHpS" DockPanel.Dock="Right" Minimum="30" Maximum="400" TickFrequency="10" /></DockPanel>
                 <CheckBox x:Name="ShowHpC" Content="受伤时在头顶显示血条" Margin="0,3" />
 
+                <TextBlock Text="喂食与体重" Style="{StaticResource H}" />
+                <CheckBox x:Name="HungerC" Content="会饿（饿了自己找吃的，饿扁了不回血）" Margin="0,3" />
+                <DockPanel><TextBlock Text="饿得多快（每分钟掉多少饱食度）" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=HungerS, StringFormat=0.#}" />
+                    <Slider x:Name="HungerS" DockPanel.Dock="Right" Minimum="0.5" Maximum="20" TickFrequency="0.5" IsSnapToTickEnabled="True" /></DockPanel>
+                <CheckBox x:Name="WeightC" Content="体重（吃了长肉，越胖血越厚、越难拎，砸到别的猪越疼）" Margin="0,3" />
+                <DockPanel><TextBlock Text="新猪体重 kg" /><TextBox x:Name="StartWeightT" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <DockPanel><TextBlock Text="超过多少 kg 拎着会手滑（含背上的猪）" /><TextBox x:Name="HeavyT" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <TextBlock Text="托盘菜单 → 喂食 投放食物；猪群 → 查看状态" Foreground="#999" />
+
                 <TextBlock Text="猪群" Style="{StaticResource H}" />
                 <DockPanel><TextBlock Text="最多几只（自我复制 / 多开）" /><TextBox x:Name="MaxPetsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
                 <TextBlock Text="再次运行程序会从天上掉下一只新猪" Foreground="#999" />
@@ -86,6 +95,11 @@
 
                 <TextBlock Text="窗口" Style="{StaticResource H}" />
                 <CheckBox x:Name="TopC" Content="总在最前" Margin="0,3" />
+                <CheckBox x:Name="CollideC" Content="窗口碰撞体积（能站在其他程序的窗口上）" Margin="0,3" />
+                <CheckBox x:Name="VisualC" Content="全屏 / 最大化窗口里自动识别能站的地方" Margin="0,3" />
+                <CheckBox x:Name="ElementC" Content="　优先读取界面元素位置（更准，读不到时看画面）" Margin="0,3" />
+                <DockPanel><TextBlock Text="识别阈值（越小越容易站）" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=LedgeS, StringFormat=0}" />
+                    <Slider x:Name="LedgeS" DockPanel.Dock="Right" Minimum="10" Maximum="120" TickFrequency="5" /></DockPanel>
                 <CheckBox x:Name="ThroughC" Content="点击穿透（可在托盘菜单关闭）" Margin="0,3" />
                 <CheckBox x:Name="AutoC" Content="开机自启" Margin="0,3" />
 

@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace PigPet;
 
@@ -36,6 +38,7 @@ public partial class PetBrain
     public void Start(Vector velocity = default, bool airborne = false)
     {
         Config.Changed += _onConfig;
+        InitFood();
         InitHealth();
         if (airborne) { _throw = velocity; Play("fall"); return; }
         w.Say(Herd.Count > 1 ? "又来一只！" : "哼哼~ 我来啦");
@@ -78,6 +81,10 @@ public partial class PetBrain
                 "clone" => Clone(ct), "visit" => Visit(ct), "greet" => GreetInvited(ct), "pile" => Pile(ct),
                 "beneath" => Beneath(ct), "chase" => Chase(ct), "follow" => Follow(ct), "merge" => Merge(ct),
                 "merge-out" => MergeOut(ct), "duel" => Duel(ct), "duel-b" => DuelFollower(ct),
+                "eat" => Eat(ct), "hopoff" => HopOff(ct), "status" => Status(ct),
+                _ when name.StartsWith("feed:") => Feed(name[5..], ct),
+                // 调试：weight:N 直接设定体重
+                _ when name.StartsWith("weight:") && double.TryParse(name[7..], out var kg) => SetWeight(kg, ct),
                 // 调试 / 脚本：throw:vx,vy 以指定速度把小猪抛出去
                 _ when name.StartsWith("throw:") && TryParseVector(name[6..], out var tv) => ThrowAndFall(tv, ct),
                 _ when name.StartsWith("burst:") && int.TryParse(name[6..], out var n) => Burst(n, ct),
@@ -90,6 +97,12 @@ public partial class PetBrain
             await EaseHome(0.3, ct);
             w.ShowLazy(true);
             if (_paused || _dragging) return;
+            // 还有自己认领的食物（比如走到窗口边掉下去吃东西时被打断了），或者饿了而场上有吃的：接着去吃
+            if (CanEat && FoodWorld.AnyFor(w) && (Hungry || FoodWorld.Items.Any(f => f.ClaimedBy == w)))
+            {
+                Play("eat");
+                return;
+            }
             await Task.Delay(TimeSpan.FromSeconds(Rand(C.IntervalMin, Math.Max(C.IntervalMin, C.IntervalMax))), ct);
             Play(Choose());
         }
@@ -118,7 +131,9 @@ public partial class PetBrain
         if (C.Actions.TryGetValue("sleep", out var s) && s.Enabled &&
             (DateTime.Now - _lastInteract).TotalSeconds > C.SleepAfter && R.NextDouble() < 0.5)
             return "sleep";
-        var pool = C.Actions.Where(a => a.Value.Enabled && a.Value.Weight > 0 && CoopAllowed(a.Key)).ToList();
+        if (Hungry && CanEat && FoodWorld.AnyFor(w)) return "eat";
+        if (IsRiding && !HasRider && R.NextDouble() < 0.3) return "hopoff";
+        var pool = C.Actions.Where(a => a.Value.Enabled && a.Value.Weight > 0 && CoopAllowed(a.Key) && StackAllowed(a.Key)).ToList();
         if (pool.Count == 0) return "lazy";
         double r = R.NextDouble() * pool.Sum(a => a.Value.Weight);
         foreach (var a in pool) if ((r -= a.Value.Weight) <= 0) return a.Key;
@@ -145,8 +160,10 @@ public partial class PetBrain
     public void BeginDrag()
     {
         _dragging = true;
+        _support = IntPtr.Zero; _base = null; // 从别的猪背上被拎走
         if (IsDead) { Hp = MaxHp * 0.3; Forms.Clear(w); }
-        w.Say(_form == "stand" ? "挪一次五块！" : "放我下来！", 1500);
+        bool heavy = C.WeightEnabled && CarryMass * BaseWeight > C.HeavyWeight;
+        w.Say(heavy ? "我很重的哦……" : _form == "stand" ? "挪一次五块！" : "放我下来！", 1500);
         Play("drag");
     }
 
@@ -156,7 +173,8 @@ public partial class PetBrain
     {
         _dragging = false;
         _lastInteract = DateTime.Now;
-        _throw = velocity * C.ThrowStrength;
+        // 越重越甩不动
+        _throw = velocity * C.ThrowStrength / Math.Sqrt(Math.Max(1, CarryMass));
         if (_throw.Length > 1500) w.Say("哇啊啊——", 1200);
         Play("fall");
     }
@@ -166,35 +184,42 @@ public partial class PetBrain
     // 必须按 RenderingTime 去重，否则一帧跑很多次、每次 dt≈0，位移取整后等于没动。
     // 另外窗口一动 Rendering 就会额外触发（实测约 250Hz），远超屏幕刷新率，白白多算多画。
     // 所以所有动画逻辑统一按“逻辑帧”推进：两次逻辑帧之间至少隔一个屏幕刷新周期。
-    static long _frameSeq;
+    //
+    // 另外：逐帧的动画不能直接在 Rendering 回调或 Normal 优先级的 await 续体里跑——
+    // 它们的优先级都比鼠标输入高，猪一多、窗口一直在动，点击就要排队几百毫秒甚至一两秒。
+    // 所以 Rendering 只负责“到点了”，真正推进一帧放到输入优先级的调度项里，和点击按先后顺序排队。
     static TimeSpan? _lastFrame;
-    static bool _frameHooked;
+    static bool _frameHooked, _framePosted;
+    static List<TaskCompletionSource> _frameWaiters = new();
 
     static Task NextFrame()
     {
         if (!_frameHooked)
         {
             _frameHooked = true;
-            // 先订阅，保证每次 Rendering 时它最先执行，后面的等待者看到的是本次的帧号
             CompositionTarget.Rendering += (_, e) =>
             {
                 var rt = ((RenderingEventArgs)e).RenderingTime;
                 if (_lastFrame is TimeSpan last && rt - last < Perf.FrameInterval) return; // 还没到下一个刷新周期
+                if (_lastFrame is TimeSpan prev && (rt - prev).TotalMilliseconds > 50) Perf.Log($"动画卡顿 {(rt - prev).TotalMilliseconds:0}ms");
                 _lastFrame = rt;
-                _frameSeq++;
+                if (_framePosted || _frameWaiters.Count == 0) return;
+                _framePosted = true;
+                Application.Current.Dispatcher.BeginInvoke(FlushFrame, DispatcherPriority.Input);
             };
         }
-        long start = _frameSeq;
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler? h = null;
-        h = (_, _) =>
-        {
-            if (_frameSeq == start) return; // 还是同一逻辑帧
-            CompositionTarget.Rendering -= h;
-            tcs.TrySetResult();
-        };
-        CompositionTarget.Rendering += h;
+        // 不用 RunContinuationsAsynchronously：续体就在 FlushFrame 里同步执行（同样是输入优先级）
+        var tcs = new TaskCompletionSource();
+        _frameWaiters.Add(tcs);
         return tcs.Task;
+    }
+
+    static void FlushFrame()
+    {
+        _framePosted = false;
+        var waiters = _frameWaiters;
+        _frameWaiters = new(); // 续体里再等下一帧的会进新列表
+        foreach (var t in waiters) t.TrySetResult();
     }
 
     /// <summary>逐帧回调 f(已过秒数, 本帧秒数)，持续 seconds 秒（≤0 表示直到取消）。</summary>
@@ -401,7 +426,7 @@ public partial class PetBrain
             double ph = Math.Sin(2 * Math.PI * t * K / 0.5);
             w.ARotate.Angle = 6 * ph;
             w.AMove.Y = -Math.Abs(ph) * Size * 0.06;
-            Step(60 * K, dt);
+            Step(60 * K * Agility, dt);
         }, ct);
         Log($"散步 {sw.Elapsed.TotalSeconds:0.0}s 移动 {Math.Abs(w.PosX - x0):0} DIP（期望约 {60 * K * sw.Elapsed.TotalSeconds:0}）");
     }
@@ -484,8 +509,20 @@ public partial class PetBrain
     {
         var gp = w.GrabPoint;
         double ang = 0, angV = 0;
+        // 太重（连同背上的猪）就拎不久：越重越快手滑
+        double kg = CarryMass * BaseWeight, grip = double.MaxValue;
+        if (C.WeightEnabled && kg > C.HeavyWeight)
+            grip = Math.Clamp(3.5 - 3 * (kg - C.HeavyWeight) / C.HeavyWeight, 0.4, 3.5) * Rand(0.8, 1.2);
+        bool slipped = false;
         return Animate(0, (t, dt) =>
         {
+            if (!slipped && t > grip)
+            {
+                slipped = true;
+                Log($"太重手滑 {kg:0}kg，拎了 {t:0.0}s");
+                w.Say(R.NextDouble() < 0.5 ? "太重了，拎不住！" : "手滑了——", 1200);
+                w.Dispatcher.BeginInvoke(w.ForceDrop); // 别在动画回调里切换动作
+            }
             dt = Math.Min(dt, 0.05);
             double target = Math.Clamp(-w.DragVelocity.X * 0.012, -25, 25); // 往右拖，身体落后向左摆
             angV += ((target - ang) * 60 - angV * 6) * dt; // 弹簧 + 阻尼
@@ -494,6 +531,7 @@ public partial class PetBrain
             bool mirrored = w.Dir > 0;
             w.Anim.RenderTransformOrigin = new Point(mirrored ? 1 - gp.X : gp.X, gp.Y);
             double screenAng = ang + 3 * Math.Sin(2 * Math.PI * t / 1.2); // 悬空轻晃
+            if (grip < double.MaxValue) screenAng += 2.5 * Math.Min(1, t / grip) * Math.Sin(2 * Math.PI * t * 13); // 快拎不住了，抖
             w.ARotate.Angle = mirrored ? -screenAng : screenAng;
         }, ct);
     }
@@ -504,10 +542,22 @@ public partial class PetBrain
     /// </summary>
     async Task Fall(CancellationToken ct)
     {
+        _support = IntPtr.Zero; _base = null; _flying = true;
+        try { await FallCore(ct); }
+        finally { _flying = false; }
+    }
+
+    async Task FallCore(CancellationToken ct)
+    {
         w.RefreshWorkArea();
         var b = w.PhysicsBounds();
+        double feet = Size * 0.08;          // rest 帧脚底离图片底边约 8%，站平台时下沉这么多让脚踩实
+        IntPtr support = IntPtr.Zero;       // 正站在哪个窗口上（0 = 不在窗口上，VisualSupport = 画面里的边缘）
+        var ledges = new System.Collections.Generic.List<VisualLedges.Ledge>();
+        double nextLedgeScan = 0;
         double x = w.Left, y = w.Top, vx = _throw.X, vy = _throw.Y;
-        double g = C.Gravity, e = C.Bounce, r = Size / 2, deg = 180 / Math.PI;
+        PetWindow? onPig = null;            // 落在哪只猪背上
+        double g = C.Gravity, e = C.Bounce * Math.Clamp(1.15 - 0.15 * Mass, 0.4, 1), r = Size / 2, deg = 180 / Math.PI;
         double angV = 0, squash = 0, squashT = 9;
         bool dead = IsDead; // 被撞飞时可能已经没血了
         _throw = default;
@@ -536,9 +586,11 @@ public partial class PetBrain
             double now = sw.Elapsed.TotalSeconds, dt = Math.Min(0.033, now - last);
             last = now;
 
-            bool grounded = y >= b.Bottom - 0.5 && Math.Abs(vy) < 1;
+            bool grounded = (y >= b.Bottom - 0.5 || support != IntPtr.Zero) && Math.Abs(vy) < 1;
             if (!grounded) vy += g * dt;
+            double prevFeetY = y + w.Height - feet;
             x += vx * dt; y += vy * dt;
+            double bodyL = x + w.Width / 2 - Size * 0.3, bodyR = x + w.Width / 2 + Size * 0.3;
 
             void Hit(double impact)
             {
@@ -547,11 +599,79 @@ public partial class PetBrain
                 squash = Math.Min(0.3, impact / 5000); squashT = 0;
             }
             if (y > b.Bottom) { y = b.Bottom; Hit(vy); vy = vy > 200 ? -vy * e : 0; }
+            // 窗口顶边：下落途中脚底穿过某个窗口的顶边就落在上面
+            if (vy > 0 && support == IntPtr.Zero &&
+                WindowPlatforms.Find(bodyL, bodyR, prevFeetY - 1, y + w.Height - feet) is { } land)
+            {
+                y = land.Y - w.Height + feet;
+                Hit(vy);
+                if (vy > 200) vy = -vy * e; else { vy = 0; support = land.Hwnd; }
+            }
+            // 全屏 / 最大化窗口区域：看画面找能站的水平边缘（每 0.08 秒截一次脚下到地面的竖条）
+            double cxNow = x + w.Width / 2, feetNow = y + w.Height - feet;
+            bool visualArea = vy > 0 && support == IntPtr.Zero && WindowPlatforms.IsVisualArea(cxNow, feetNow);
+            // 优先用元素位置（UI Automation）：读到了元素的窗口以元素为准
+            if (visualArea && UiaLedges.Covers(cxNow, feetNow))
+            {
+                if (UiaLedges.Find(bodyL, bodyR, prevFeetY - 1, feetNow) is { } el)
+                {
+                    y = el.Y - w.Height + feet;
+                    Hit(vy);
+                    if (vy > 200) vy = -vy * e; else { vy = 0; support = ElementSupport; }
+                }
+            }
+            // 读不到元素（游戏、视频等）：看画面找边缘
+            else if (visualArea)
+            {
+                if (now >= nextLedgeScan)
+                {
+                    ledges = VisualLedges.ScanUnder(cxNow, Size, prevFeetY - 2, b.Bottom + w.Height - feet, requireBoth: true);
+                    nextLedgeScan = now + 0.08;
+                }
+                foreach (var lg in ledges)
+                {
+                    if (lg.Y < prevFeetY - 1 || lg.Y > feetNow) continue;
+                    y = lg.Y - w.Height + feet;
+                    _ledgeSign = lg.Sign; // 记住站的是哪种边缘，跟随滚动时只认同方向的
+                    Hit(vy);
+                    // 反弹时保留识别结果：弹起后马上又会落回这条边缘
+                    if (vy > 200) vy = -vy * e; else { vy = 0; support = VisualSupport; ledges.Clear(); }
+                    break;
+                }
+            }
+            // 别的猪的背：落上去就叠罗汉（太重会把下面那只砸伤）
+            if (vy > 0 && support == IntPtr.Zero && FindPigBelow(cxNow, prevFeetY, feetNow) is { } under)
+            {
+                y = under.PosY + under.Height - w.Height - under.Brain.BackHeight;
+                LandOn(under, vy);
+                Hit(vy * 0.5); // 猪背是软的
+                if (vy > 800) vy = -vy * e * 0.5;
+                else { vy = 0; vx *= 0.3; support = PigSupport; onPig = under; }
+            }
+            // 站着的地方没有了（走出边缘 / 窗口移走 / 画面变了）就继续掉
+            if (support == PigSupport)
+            {
+                if (onPig == null || !onPig.Brain.CanCarry || Math.Abs(onPig.PosX + onPig.Width / 2 - (x + w.Width / 2)) > Size * 0.5)
+                { support = IntPtr.Zero; onPig = null; }
+                else y = onPig.PosY + onPig.Height - w.Height - onPig.Brain.BackHeight;
+            }
+            else if (support == ElementSupport)
+            {
+                double fy = y + w.Height - feet;
+                if (UiaLedges.Find(bodyL, bodyR, fy - 4, fy + 4) == null) support = IntPtr.Zero;
+            }
+            else if (support == VisualSupport)
+            {
+                double fy = y + w.Height - feet;
+                if (VisualLedges.ScanUnder(x + w.Width / 2, Size, fy - 4, fy + 4, requireBoth: false).Count == 0) support = IntPtr.Zero;
+            }
+            else if (support != IntPtr.Zero && support != ElementSupport && WindowPlatforms.Find(bodyL, bodyR, y + w.Height - feet - 3, y + w.Height - feet + 3) == null)
+                support = IntPtr.Zero;
             if (y < b.Top) { y = b.Top; Hit(-vy); vy = -vy * e; }
             if (x < b.Left) { x = b.Left; Hit(-vx); vx = -vx * e; angV = -angV * e; }
             if (x > b.Right) { x = b.Right; Hit(vx); vx = -vx * e; angV = -angV * e; }
 
-            grounded = y >= b.Bottom - 0.5 && Math.Abs(vy) < 1;
+            grounded = (y >= b.Bottom - 0.5 || support != IntPtr.Zero) && Math.Abs(vy) < 1;
             if (grounded)
             {
                 vx *= Math.Exp(-C.Friction * dt);
@@ -574,6 +694,9 @@ public partial class PetBrain
             restTime = grounded && Math.Abs(vx) < 15 ? restTime + dt : 0;
             if (restTime > 0.15 && squashT > 0.5) break;
         }
+        _flying = false;
+        SetSupport(support);
+        if (support == PigSupport && onPig != null) StartRiding(onPig);
         if (dead)
         {
             await DeadSettleAndRevive(ang, ct);

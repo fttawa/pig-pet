@@ -13,10 +13,35 @@ public partial class App : System.Windows.Application
     WinForms.NotifyIcon? _tray;
     SettingsWindow? _settings;
     bool _paused;
+    FoodBar? _foodBar;
+
+    /// <summary>按配置显示 / 隐藏食物悬浮栏。</summary>
+    void SyncFoodBar()
+    {
+        if (Config.Current.FoodBar && _foodBar == null)
+        {
+            _foodBar = new FoodBar();
+            _foodBar.Closed += (_, _) => _foodBar = null;
+            _foodBar.Show();
+        }
+        else if (!Config.Current.FoodBar && _foodBar != null) _foodBar.Close();
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // 兜底：界面线程上的意外异常记日志，不让整个桌宠闪退
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            try
+            {
+                var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PigPet");
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "error.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {ex.Exception}{Environment.NewLine}");
+            }
+            catch { }
+            ex.Handled = true;
+        };
         _mutex = new Mutex(true, "PigPet.SingleInstance", out bool first);
         if (!first)
         {
@@ -33,6 +58,8 @@ public partial class App : System.Windows.Application
             System.IO.File.AppendAllText(log, $"渲染级别 Tier={System.Windows.Media.RenderCapability.Tier >> 16} " +
                 $"渲染模式={System.Windows.Media.RenderOptions.ProcessRenderMode}" + Environment.NewLine);
         Herd.SettingsRequested += OpenSettings;
+        FoodWorld.Spawned += PetBrain.AssignFood;
+        FoodWorld.Prewarm();
         var pet = Herd.Spawn();
 
         // 开发用：dotnet run -- --snapshot <目录>，把每个形态渲染成 PNG 便于检查
@@ -43,7 +70,8 @@ public partial class App : System.Windows.Application
         _tray = new WinForms.NotifyIcon { Icon = LoadIcon(), Text = "小猪桌宠", Visible = true };
         _tray.DoubleClick += (_, _) => OpenSettings();
         BuildMenu();
-        Config.Changed += _ => BuildMenu();
+        SyncFoodBar();
+        Config.Changed += _ => { BuildMenu(); SyncFoodBar(); };
         Herd.Changed += () => Dispatcher.BeginInvoke(BuildMenu);
     }
 
@@ -78,6 +106,20 @@ public partial class App : System.Windows.Application
         forms.DropDownItems.Add("蛇咬猪", null, (_, _) => PlayAll("form:bite"));
         menu.Items.Add(forms);
 
+        var feed = new WinForms.ToolStripMenuItem("喂食");
+        foreach (var k in FoodKind.All)
+            feed.DropDownItems.Add($"{k.Name}（饱食 +{k.Satiety}）", null, (_, _) => FoodWorld.Drop(k));
+        feed.DropDownItems.Add(new WinForms.ToolStripSeparator());
+        feed.DropDownItems.Add("随机投喂", null, (_, _) => FoodWorld.Drop(FoodKind.Random()));
+        feed.DropDownItems.Add("每只猪一份", null, (_, _) =>
+        {
+            foreach (var p in Herd.Pets.ToList()) FoodWorld.Drop(FoodKind.Random(), p.BodyCenter.X + p.Dir * p.PetSize, p);
+        });
+        var bar = new WinForms.ToolStripMenuItem("食物悬浮栏") { Checked = Config.Current.FoodBar };
+        bar.Click += (_, _) => { var c = Config.Current.Clone(); c.FoodBar = !c.FoodBar; Config.Save(c); };
+        feed.DropDownItems.Add(bar);
+        menu.Items.Add(feed);
+
         var herd = new WinForms.ToolStripMenuItem($"猪群（{Herd.Count}/{Config.Current.MaxPets}）");
         herd.DropDownItems.Add("再来一只（从天而降）", null, (_, _) => Herd.SpawnFromSky());
         herd.DropDownItems.Add("让一只分裂", null, (_, _) => Herd.Pets.LastOrDefault()?.Brain.Play("clone", true));
@@ -86,6 +128,7 @@ public partial class App : System.Windows.Application
             burst.DropDownItems.Add($"分裂出 {n} 只", null, (_, _) => Burst(n));
         burst.DropDownItems.Add("自定义数量…", null, (_, _) => { if (CountDialog.Ask() is int n) Burst(n); });
         herd.DropDownItems.Add(burst);
+        herd.DropDownItems.Add("查看状态（体重 / 饱食 / 血量）", null, (_, _) => PlayAll("status"));
         herd.DropDownItems.Add("收回所有克隆", null, (_, _) => Herd.RemoveClones());
         menu.Items.Add(herd);
 

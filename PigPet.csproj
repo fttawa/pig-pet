@@ -10,7 +10,7 @@
     <RootNamespace>PigPet</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>assets\pig.ico</ApplicationIcon>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <Product>小猪桌宠</Product>
   </PropertyGroup>
 
@@ -31,6 +31,7 @@
   <ItemGroup>
     <Resource Include="assets\pig_1f416.png" />
     <Resource Include="assets\logos\*.png" />
+    <Resource Include="assets\food\*.png" />
     <Resource Include="assets\pig-lottie.json" />
   </ItemGroup>
 </Project>

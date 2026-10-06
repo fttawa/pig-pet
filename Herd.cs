@@ -87,6 +87,8 @@ public static class Herd
                     {
                         if (cmd == "spawn") SpawnFromSky();
                         // play <动作>：让最后一只执行，例如 PigPet.exe --play clone
+                        // play pause / play resume：全部暂停 / 继续（调试用）
+                        else if (cmd is "play pause" or "play resume") foreach (var p in Pets) p.Brain.SetPaused(cmd == "play pause");
                         else if (cmd.StartsWith("play ")) Pets.LastOrDefault()?.Brain.Play(cmd[5..], true);
                     });
                 }

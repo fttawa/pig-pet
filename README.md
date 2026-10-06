@@ -11,6 +11,10 @@
 - **物理**：拖起来像钟摆一样晃，甩出去有重力、反弹、滚动、撞击压扁
 - **17 种表情包形态**：站街、苯猪、我吃一点、猪吃蛇 / 蛇咬猪、猪吃螃蟹、猪喝咖啡、猪装象、在群友身上睡觉、汉堡猪、猪写代码、白吃 token 的猪、哭哭猪、生气猪、?!猪猪!?、摊平猪、死猪
 - **隐藏血条**：撞墙、砸地、被别的猪撞都会扣血，不受伤时慢慢回血；血量归零的那一刻当场死掉，尸体保留动量继续翻滚，停下后四脚朝天抽搐，再“诈尸”爬起来
+- **站在窗口上**：落在其他程序窗口的顶边上，窗口拖动 / 改变大小时跟着走，窗口移开就掉下来；最大化 / 全屏窗口里优先用 UI Automation 读取按钮、面板等元素的上边沿当平台（页面滚动时跟着走），读不到元素的（游戏、视频）就看画面找能站的水平边缘
+- **喂食**：点食物悬浮栏上的图标（按住左边把手可拖动，托盘 → 喂食 → 食物悬浮栏 开关），或托盘 → 喂食，掉下苹果、玉米、西瓜、白菜、蛋糕、红薯（可以拖动、甩出去）。小猪会饿，饿了自己去找吃的，食物在高处会跳上去、在低处会走到窗口边跳下去，一口一口吃完回饱食度和血量；吃撑了四脚朝天躺着，饿扁了不回血
+- **体重**：吃了会长肉、变胖，饿着会掉肉。越胖血越厚、走得越慢、越甩不动；超过设定的重量（连同背上的猪）拎着会手滑掉下去；撞别的猪、砸到别的猪身上伤害按体重算
+- **叠罗汉**：把一只猪拖到 / 扔到另一只背上就站在上面，可以一直往上叠；上面的跟着下面的走，下面那只被甩飞、翻滚时上面的会被带飞或颠下来；背上总重超过自身体重两倍会被慢慢压伤，压死了会把上面的猪掀下来
 - **猪群**：
   - 自我复制、一键分裂出指定数量（最多 50 只）
   - 再次运行 exe 会从天上掉下一只新猪
@@ -26,7 +30,8 @@
 | 双击 | 翻滚 |
 | 拖动 / 甩 | 拎起来晃，松手按速度飞出去 |
 | 右键 | 打开设置 |
-| 托盘菜单 | 动作、形态、猪群、暂停、点击穿透、退出 |
+| 拖到别的猪头顶松手 | 叠罗汉 |
+| 托盘菜单 | 动作、形态、喂食、猪群（含查看体重 / 饱食 / 血量）、暂停、点击穿透、退出 |
 
 命令行可以让正在运行的程序执行动作：
 
@@ -35,6 +40,9 @@ PigPet.exe --play burst:10     # 一键分裂 10 只
 PigPet.exe --play duel         # 两猪对峙
 PigPet.exe --play form:peek    # 指定形态
 PigPet.exe --play throw:3000,-2000   # 以指定速度把小猪甩出去
+PigPet.exe --play feed:watermelon    # 在小猪面前掉一块西瓜（apple corn watermelon greens cake sweetpotato）
+PigPet.exe --play weight:90          # 直接设定体重（kg）
+PigPet.exe --play pile               # 跳到最近的猪背上叠罗汉
 ```
 
 ## 构建
@@ -58,6 +66,7 @@ dotnet publish -c Release -o publish        # 打包成自带运行时的单个 
 |---|---|---|
 | `assets/pig-lottie.json` | [Noto Animated Emoji](https://googlefonts.github.io/noto-emoji-animation/) | CC BY 4.0，© Google |
 | `assets/pig_1f416.png` | Google Noto Emoji（Android 11），经 [Emojipedia](https://emojipedia.org/google/android-11.0/pig) | Apache 2.0，© Google |
+| `assets/food/*.png` | [Noto Emoji](https://github.com/googlefonts/noto-emoji)（🍎🌽🍉🥬🍰🍠） | Apache 2.0，© Google |
 | `assets/logos/python-logo-only.svg` | [python.org 官方 logo](https://www.python.org/community/logos/) | Python 商标归 Python Software Foundation 所有 |
 | `assets/logos/rustacean-flat-happy.svg` | [rustacean.net](https://rustacean.net/)（Ferris） | 作者声明放弃版权（Public Domain） |
 | `assets/logos/php-logo.svg` | [php.net 官方 logo](https://www.php.net/download-logos.php) | CC BY-SA 4.0 |

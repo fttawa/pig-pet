@@ -72,6 +72,9 @@ public partial class PetWindow : Window
         Canvas.SetLeft(Pig, (Width - c.Size) / 2);
         Canvas.SetTop(Pig, Height - c.Size);
         Opacity = c.Opacity;
+        WindowPlatforms.SetDpi(Dpi().Item1);
+        VisualLedges.SetDpi(Dpi().Item1);
+        UiaLedges.SetDpi(Dpi().Item1);
         Topmost = c.AlwaysOnTop;
         SetClickThrough(c.ClickThrough);
         Clamp();
@@ -156,6 +159,7 @@ public partial class PetWindow : Window
     void OnRender(object? s, EventArgs e)
     {
         PollDrag();
+        Brain.RideTick();
         if (_frames == null) return;
         int rest = Math.Min(_frames.Length - 1, (int)Math.Round(LottieFrames.RestSeconds * LottieFrames.Fps));
         int idx = rest;
@@ -310,6 +314,16 @@ public partial class PetWindow : Window
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
+    /// <summary>移到同层窗口的最前面（叠罗汉时上面的猪要盖住下面那只）。</summary>
+    public void BringToFront()
+    {
+        var h = new WindowInteropHelper(this).Handle;
+        if (h == IntPtr.Zero) return;
+        SetWindowPos(h, Topmost ? new IntPtr(-1) : IntPtr.Zero, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+    }
+
+    const uint SWP_NOMOVE = 0x2;
+
     public void Clamp() { RefreshWorkArea(); MoveTo(Left, Top); }
 
     public void ResetPosition()
@@ -428,6 +442,13 @@ public partial class PetWindow : Window
     }
 
     void OnUp(object s, MouseButtonEventArgs e) => Release();
+
+    /// <summary>太重了拎不住：强制松手，按当时的拖动速度掉下去。</summary>
+    public void ForceDrop()
+    {
+        if (!_pressed || !_dragging) return;
+        Release();
+    }
 
     void Release()
     {

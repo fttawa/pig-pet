@@ -16,23 +16,39 @@ public partial class PetBrain
     double _lastDamage;
     DispatcherTimer? _regen;
 
-    double MaxHp => Math.Max(1, C.MaxHp);
+    double MaxHp => Math.Max(1, C.MaxHp) * HpScale; // 越胖血越厚
     public bool IsDead => C.HpEnabled && Hp <= 0;
 
     void InitHealth()
     {
+        InitGround();
         Hp = MaxHp;
         _regen = new DispatcherTimer { Interval = TimeSpan.FromSeconds(0.5) };
         _regen.Tick += (_, _) =>
         {
             if (Hp > MaxHp) Hp = MaxHp; // 改小了上限
             // 活着、3 秒内没受伤，才回血
-            if (Hp > 0 && Hp < MaxHp && Now - _lastDamage > 3) Hp = Math.Min(MaxHp, Hp + C.HpRegen * 0.5);
+            // 饿扁了不回血
+            if (Hp > 0 && Hp < MaxHp && Now - _lastDamage > 3 && !Starving) Hp = Math.Min(MaxHp, Hp + C.HpRegen * 0.5);
         };
         _regen.Start();
     }
 
-    void StopHealth() => _regen?.Stop();
+    void StopHealth() { _regen?.Stop(); _ground?.Stop(); _hunger?.Stop(); }
+
+    /// <summary>调试：直接设定体重。</summary>
+    Task SetWeight(double kg, CancellationToken ct)
+    {
+        AddWeight(kg - Weight);
+        SayStatus();
+        return Task.Delay(1500, ct);
+    }
+
+    Task Status(CancellationToken ct)
+    {
+        SayStatus();
+        return Task.Delay(4000, ct);
+    }
 
     static bool TryParseVector(string s, out Vector v)
     {
@@ -49,11 +65,11 @@ public partial class PetBrain
     static double ImpactDamage(double impact) => Math.Max(0, impact - 1000) / 22;
 
     /// <summary>扣血。返回这一下是否致命。</summary>
-    public bool Damage(double amount)
+    public bool Damage(double amount, bool quiet = false)
     {
         if (!C.HpEnabled || amount <= 0 || Hp <= 0) return false;
         Hp = Math.Max(0, Hp - amount);
-        Log($"受伤 -{amount:0} 剩余 {Hp:0}/{MaxHp:0}");
+        if (!quiet) Log($"受伤 -{amount:0} 剩余 {Hp:0}/{MaxHp:0}");
         _lastDamage = Now;
         if (C.ShowHpBar) w.ShowHp(Hp / MaxHp);
         if (Hp > 0 && amount > 15 && R.NextDouble() < 0.4) w.Say(Hp / MaxHp < 0.3 ? "快不行了……" : "好痛！", 900);
