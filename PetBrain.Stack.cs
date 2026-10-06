@@ -142,7 +142,7 @@ public partial class PetBrain
             }
         }
         // 下面那只翻滚、蹦跳、冲锋：被颠下来
-        if (ub._current is "roll" or "spin" or "jump" or "chase" or "follow" or "duel" or "duel-b" or "clone" or "merge-out"
+        if (ub._current is "roll" or "spin" or "jump" or "roam" or "chase" or "follow" or "duel" or "duel-b" or "clone" or "merge-out"
             || ub._current.StartsWith("burst:"))
         {
             LeaveBack(new Vector(R.Next(2) == 0 ? -280 : 280, -650), "哇！");

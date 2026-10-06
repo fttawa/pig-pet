@@ -88,6 +88,8 @@
                 <TextBlock Text="猪群" Style="{StaticResource H}" />
                 <DockPanel><TextBlock Text="最多几只（自我复制 / 多开）" /><TextBox x:Name="MaxPetsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
                 <TextBlock Text="再次运行程序会从天上掉下一只新猪" Foreground="#999" />
+                <CheckBox x:Name="BoredC" Content="无聊时自动分裂（兴奋值一直很低时分个身陪自己玩）" Margin="0,3" />
+                <DockPanel><TextBlock Text="无聊多少秒后分裂" /><TextBox x:Name="BoredT" DockPanel.Dock="Right" Width="60" /></DockPanel>
 
                 <TextBlock Text="性能" Style="{StaticResource H}" />
                 <DockPanel><TextBlock Text="动画帧率上限（0 = 跟随屏幕）" /><TextBox x:Name="FpsT" DockPanel.Dock="Right" Width="60" /></DockPanel>

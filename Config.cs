@@ -38,6 +38,9 @@ public class Config
     public double HungerRate { get; set; } = 4;      // 每分钟掉多少饱食度（满 100）
     public bool WeightEnabled { get; set; } = true;  // 体重：吃了长肉，越胖越抗揍、越难拎
     public double StartWeight { get; set; } = 30;    // 新猪的体重（kg）
+    public bool RoamMode { get; set; }               // 满屏漫游模式：大部分时间沿屏幕四周爬
+    public bool BoredClone { get; set; } = true;     // 无聊时自动分裂
+    public double BoredAfter { get; set; } = 90;     // 兴奋值持续很低多少秒算无聊
     public bool FoodBar { get; set; } = true;        // 显示食物悬浮栏
     public double? FoodBarX { get; set; }            // 悬浮栏位置（DIP），null = 默认右上
     public double? FoodBarY { get; set; }
@@ -52,12 +55,12 @@ public class Config
     /// <summary>各表情包形态是否参与随机（缺省为开启）。</summary>
     public Dictionary<string, bool> FormsEnabled { get; set; } = new();
 
-    public static readonly string[] ActionNames = { "lazy", "idle", "walk", "roll", "jump", "spin", "shake", "sleep", "form", "clone", "visit", "pile", "chase", "merge", "duel" };
+    public static readonly string[] ActionNames = { "lazy", "idle", "walk", "roll", "jump", "spin", "shake", "sleep", "form", "clone", "visit", "pile", "chase", "merge", "duel", "roam" };
     public static readonly Dictionary<string, string> Labels = new()
     {
         ["lazy"] = "慵懒（官方动画）", ["idle"] = "呼吸", ["walk"] = "散步", ["roll"] = "翻滚",
         ["jump"] = "跳跃", ["spin"] = "转圈", ["shake"] = "抖动", ["sleep"] = "睡觉", ["form"] = "表情包形态",
-        ["clone"] = "自我复制", ["visit"] = "串门贴贴", ["pile"] = "叠罗汉", ["chase"] = "追逐", ["merge"] = "合体（克隆回收）", ["duel"] = "两猪对峙",
+        ["clone"] = "自我复制", ["visit"] = "串门贴贴", ["pile"] = "叠罗汉", ["chase"] = "追逐", ["merge"] = "合体（克隆回收）", ["duel"] = "两猪对峙", ["roam"] = "满屏走（爬墙、倒挂天花板）",
     };
 
     static Dictionary<string, ActionSetting> DefaultActions() => new()
@@ -66,7 +69,7 @@ public class Config
         ["roll"] = new() { Weight = 1 }, ["jump"] = new() { Weight = 1 }, ["spin"] = new() { Weight = 1 },
         ["shake"] = new() { Weight = 1 }, ["sleep"] = new() { Weight = 1 }, ["form"] = new() { Weight = 3 },
         ["clone"] = new() { Weight = 1 }, ["visit"] = new() { Weight = 2 }, ["pile"] = new() { Weight = 1 },
-        ["chase"] = new() { Weight = 1 }, ["merge"] = new() { Weight = 1 }, ["duel"] = new() { Weight = 1 },
+        ["chase"] = new() { Weight = 1 }, ["merge"] = new() { Weight = 1 }, ["duel"] = new() { Weight = 1 }, ["roam"] = new() { Weight = 1 },
     };
 
     // ---------- 持久化 ----------

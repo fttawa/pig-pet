@@ -13,8 +13,17 @@ using WinForms = System.Windows.Forms;
 
 namespace PigPet;
 
-public partial class PetWindow : Window
+/// <summary>
+/// 一只小猪：舞台（Stage）上的一个控件。名字沿用以前“一只猪一个窗口”时的 PetWindow，
+/// 对外保留 Left/Top/Show/Close/Closed 这些用法，其余代码不用改。
+/// </summary>
+public partial class PetWindow : UserControl, IStageItem
 {
+    /// <summary>被移除（合体、收回克隆、退出）。</summary>
+    public event EventHandler? Closed;
+    bool _closed, _started;
+    readonly Point? _spawnPos;
+
     public PetBrain Brain { get; }
     public event Action? SettingsRequested;
 
@@ -36,32 +45,64 @@ public partial class PetWindow : Window
         Brain = new PetBrain(this);
         _onConfig = c => Dispatcher.Invoke(() => ApplyConfig(c));
 
-        SourceInitialized += (_, _) =>
-        {
-            ApplyConfig(Config.Current);
-            if (spawnPos is Point p) MoveRaw(p.X, p.Y);
-            else
-            {
-                ResetPosition();
-                // 多只时错开，不叠在同一个位置
-                MoveTo(Left - (Herd.Count - 1) * PetSize * 1.2, Top);
-            }
-        };
-        Loaded += (_, _) => Brain.Start(velocity, spawnPos != null);
+        _spawnPos = spawnPos;
+        ApplyConfig(Config.Current);
+        // 换舞台（跨显示器）时会再触发 Loaded，只启动一次
+        Loaded += (_, _) => { if (_started) return; _started = true; Brain.Start(velocity, spawnPos != null); };
         CompositionTarget.Rendering += OnRender;
         Config.Changed += _onConfig;
-        Closed += (_, _) =>
-        {
-            CompositionTarget.Rendering -= OnRender;
-            Config.Changed -= _onConfig;
-            Brain.Stop();
-        };
 
         Pig.MouseLeftButtonDown += OnDown;
         Pig.MouseMove += OnMove;
         Pig.MouseLeftButtonUp += OnUp;
         Pig.LostMouseCapture += (_, _) => Release();
         Pig.MouseRightButtonUp += (_, _) => SettingsRequested?.Invoke();
+    }
+
+    /// <summary>放到舞台上。</summary>
+    public void Show()
+    {
+        if (_spawnPos is Point p) MoveRaw(p.X, p.Y);
+        else
+        {
+            ResetPosition();
+            // 多只时错开，不叠在同一个位置
+            MoveTo(Left - (Herd.Count - 1) * PetSize * 1.2, Top);
+        }
+        Stage.BringToFront(this);
+    }
+
+    /// <summary>从舞台上移除。</summary>
+    public void Close()
+    {
+        if (_closed) return;
+        _closed = true;
+        CompositionTarget.Rendering -= OnRender;
+        Config.Changed -= _onConfig;
+        Brain.Stop();
+        Stage.Remove(this);
+        Closed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>光标是否落在猪身上不透明的像素上（决定舞台要不要接收鼠标）。</summary>
+    public bool HitTest(Point stagePoint, Visual stage)
+    {
+        var img = Lazy.Source != null ? Lazy : Still;
+        if (img.ActualWidth <= 0) return false;
+        // 换算到图片自己的坐标（翻转、旋转、缩放、胖瘦都算进去）
+        var lp = stage.TransformToDescendant(img)?.Transform(stagePoint);
+        if (lp is not Point q || q.X < 0 || q.Y < 0 || q.X >= img.ActualWidth || q.Y >= img.ActualHeight) return false;
+        if (img.Source is not BitmapSource bmp) return true;
+        int px = (int)(q.X / img.ActualWidth * bmp.PixelWidth), py = (int)(q.Y / img.ActualHeight * bmp.PixelHeight);
+        if (px < 0 || py < 0 || px >= bmp.PixelWidth || py >= bmp.PixelHeight) return false;
+        try
+        {
+            var px4 = new byte[4];
+            var src = bmp.Format == PixelFormats.Pbgra32 || bmp.Format == PixelFormats.Bgra32 ? bmp : new FormatConvertedBitmap(bmp, PixelFormats.Pbgra32, null, 0);
+            src.CopyPixels(new Int32Rect(px, py, 1, 1), px4, 4, 0);
+            return px4[3] > 40;
+        }
+        catch { return true; }
     }
 
     // ---------- 配置 ----------
@@ -72,12 +113,10 @@ public partial class PetWindow : Window
         Canvas.SetLeft(Pig, (Width - c.Size) / 2);
         Canvas.SetTop(Pig, Height - c.Size);
         Opacity = c.Opacity;
-        WindowPlatforms.SetDpi(Dpi().Item1);
-        VisualLedges.SetDpi(Dpi().Item1);
-        UiaLedges.SetDpi(Dpi().Item1);
-        Topmost = c.AlwaysOnTop;
-        SetClickThrough(c.ClickThrough);
-        Clamp();
+        WindowPlatforms.SetDpi(Stage.Scale);
+        VisualLedges.SetDpi(Stage.Scale);
+        UiaLedges.SetDpi(Stage.Scale);
+        if (!double.IsNaN(_px)) Clamp();
         _ = LoadFrames(c.Size);
     }
 
@@ -257,38 +296,28 @@ public partial class PetWindow : Window
     public Rect WorkArea()
     {
         if (_wa is Rect r) return r;
-        var (sx, sy) = Dpi();
-        var center = new System.Drawing.Point((int)((Left + Width / 2) * sx), (int)((Top + Height / 2) * sy));
-        var wa = WinForms.Screen.FromPoint(center).WorkingArea;
-        return (_wa = new Rect(wa.X / sx, wa.Y / sy, wa.Width / sx, wa.Height / sy)).Value;
+        var center = double.IsNaN(_px) ? new Point(SystemParameters.WorkArea.Right - 1, SystemParameters.WorkArea.Bottom - 1)
+                                       : new Point(_px + Width / 2, _py + Height / 2);
+        return (_wa = Stage.For(center).Area).Value;
     }
 
-    (double, double) Dpi()
-    {
-        var m = PresentationSource.FromVisual(this)?.CompositionTarget.TransformToDevice ?? Matrix.Identity;
-        return (m.M11, m.M22);
-    }
+    static (double, double) Dpi() => (Stage.Scale, Stage.Scale);
 
     public double MinX => WorkArea().Left;
     public double MaxX => WorkArea().Right - Width;
     public double MaxY => WorkArea().Bottom - Height;
 
-    const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
-    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
     /// <summary>一次系统调用同时设置 X/Y，避免分别改 Left/Top 造成两次移动和抖动。</summary>
     // 精确的小数坐标（DIP）。窗口只能停在整数像素上，如果每帧都读回取整后的 Left 再加位移，
     // 慢速移动（每帧不到半个像素）会被舍掉，看起来就走不动了。所以位移累加在这里。
     double _px = double.NaN, _py = double.NaN;
 
-    /// <summary>精确的窗口横坐标（DIP）。窗口被外部挪动过（拖动等）时自动以实际位置为准。</summary>
-    public double PosX { get { SyncPos(); return _px; } }
-    public double PosY { get { SyncPos(); return _py; } }
-
-    void SyncPos()
-    {
-        if (double.IsNaN(_px) || Math.Abs(Left - _px) > 1.5 || Math.Abs(Top - _py) > 1.5) { _px = Left; _py = Top; }
-    }
+    /// <summary>位置（全局 DIP，左上角）。</summary>
+    public double PosX => _px;
+    public double PosY => _py;
+    public double Left => _px;
+    public double Top => _py;
 
     public void MoveTo(double x, double y)
     {
@@ -307,24 +336,13 @@ public partial class PetWindow : Window
     public void MoveRaw(double x, double y)
     {
         _px = x; _py = y;
-        var h = new WindowInteropHelper(this).Handle;
-        if (h == IntPtr.Zero) { Left = x; Top = y; return; }
-        var (sx, sy) = Dpi();
-        SetWindowPos(h, IntPtr.Zero, (int)Math.Round(x * sx), (int)Math.Round(y * sy), 0, 0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        Stage.Place(this, x, y);
     }
 
-    /// <summary>移到同层窗口的最前面（叠罗汉时上面的猪要盖住下面那只）。</summary>
-    public void BringToFront()
-    {
-        var h = new WindowInteropHelper(this).Handle;
-        if (h == IntPtr.Zero) return;
-        SetWindowPos(h, Topmost ? new IntPtr(-1) : IntPtr.Zero, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
-    }
+    /// <summary>移到最上层（叠罗汉时上面的猪要盖住下面那只）。</summary>
+    public void BringToFront() => Stage.BringToFront(this);
 
-    const uint SWP_NOMOVE = 0x2;
-
-    public void Clamp() { RefreshWorkArea(); MoveTo(Left, Top); }
+    public void Clamp() { RefreshWorkArea(); if (!double.IsNaN(_px)) MoveTo(Left, Top); }
 
     public void ResetPosition()
     {
@@ -333,31 +351,12 @@ public partial class PetWindow : Window
         MoveTo(wa.Right - Width - 80, wa.Bottom - Height);
     }
 
-    // ---------- 点击穿透 ----------
-    const int GWL_EXSTYLE = -20, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_LAYERED = 0x80000;
-    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
-    [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr h, int i, int v);
-
-    void SetClickThrough(bool on)
-    {
-        var h = new WindowInteropHelper(this).Handle;
-        if (h == IntPtr.Zero) return;
-        int s = GetWindowLong(h, GWL_EXSTYLE) | WS_EX_TOOLWINDOW | WS_EX_LAYERED;
-        s = on ? s | WS_EX_TRANSPARENT : s & ~WS_EX_TRANSPARENT;
-        SetWindowLong(h, GWL_EXSTYLE, s);
-    }
-
     // ---------- 拖动 / 点击 ----------
     // 每个渲染帧直接读系统光标位置并 SetWindowPos，不依赖 WM_MOUSEMOVE 的频率，保证跟手
-    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
-    [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
-    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
-    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
 
     bool _pressed, _dragging;
     public Point GrabPoint { get; private set; } = new(0.5, 0.3);
-    POINT _downCursor, _lastCursor;
-    RECT _downRect;
+    Point _downCursor, _lastCursor, _downPos;
     DateTime _lastClick;
 
     void OnDown(object s, MouseButtonEventArgs e)
@@ -365,9 +364,8 @@ public partial class PetWindow : Window
         // 记录抓取点（相对小猪 0~1），拎起时以此为支点摆动，身体始终挂在光标下
         var gp = e.GetPosition(Pig);
         GrabPoint = new Point(Math.Clamp(gp.X / Pig.ActualWidth, 0, 1), Math.Clamp(gp.Y / Pig.ActualHeight, 0, 1));
-        GetCursorPos(out _downCursor);
-        _lastCursor = _downCursor;
-        GetWindowRect(new WindowInteropHelper(this).Handle, out _downRect);
+        _downCursor = _lastCursor = Stage.CursorDip();
+        _downPos = new Point(_px, _py);
         _pressed = true;
         _trail.Clear();
         Pig.CaptureMouse();
@@ -393,8 +391,8 @@ public partial class PetWindow : Window
 
         if (!_dragging)
         {
-            GetCursorPos(out var c);
-            if (Math.Abs(c.X - _downCursor.X) + Math.Abs(c.Y - _downCursor.Y) < 6) return;
+            var c = Stage.CursorDip();
+            if ((Math.Abs(c.X - _downCursor.X) + Math.Abs(c.Y - _downCursor.Y)) * Stage.Scale < 6) return;
             _dragging = true;
             Brain.BeginDrag();
         }
@@ -403,25 +401,19 @@ public partial class PetWindow : Window
 
     void DragStep()
     {
-        GetCursorPos(out var c);
-        if (c.X == _lastCursor.X && c.Y == _lastCursor.Y) return;
+        var c = Stage.CursorDip();
+        if (c == _lastCursor) return;
         // 拖动中不转身：翻面会让身体绕中心镜像，从光标下滑开
         _lastCursor = c;
         SampleVelocity(c);
-        SetWindowPos(new WindowInteropHelper(this).Handle, IntPtr.Zero,
-            _downRect.L + c.X - _downCursor.X, _downRect.T + c.Y - _downCursor.Y, 0, 0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+        MoveRaw(_downPos.X + c.X - _downCursor.X, _downPos.Y + c.Y - _downCursor.Y);
     }
-
-    const uint SWP_NOREDRAW = 0x8, SWP_NOCOPYBITS = 0x100;
 
     // 最近 ~100ms 的光标轨迹，用来估算甩出去的速度（DIP/s）
     readonly System.Collections.Generic.Queue<(double t, double x, double y)> _trail = new();
 
-    void SampleVelocity(POINT c)
+    void SampleVelocity(Point p)
     {
-        var m = PresentationSource.FromVisual(this)?.CompositionTarget.TransformFromDevice ?? Matrix.Identity;
-        var p = m.Transform(new Point(c.X, c.Y));
         double now = _clock.Elapsed.TotalSeconds;
         _trail.Enqueue((now, p.X, p.Y));
         while (_trail.Count > 2 && now - _trail.Peek().t > 0.1) _trail.Dequeue();

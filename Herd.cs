@@ -89,6 +89,13 @@ public static class Herd
                         // play <动作>：让最后一只执行，例如 PigPet.exe --play clone
                         // play pause / play resume：全部暂停 / 继续（调试用）
                         else if (cmd is "play pause" or "play resume") foreach (var p in Pets) p.Brain.SetPaused(cmd == "play pause");
+                        // play hittest：在第一只猪周围打点，记录哪些点点得中（调试舞台的点击判断）
+                        else if (cmd == "play hittest" && Pets.FirstOrDefault() is { } pig)
+                        {
+                            var c = pig.BodyCenter;
+                            foreach (var (dx, dy, what) in new[] { (0.0, 0.0, "身体中心"), (0.0, -0.75, "头顶上方"), (0.9, 0.0, "右侧外面"), (-0.25, 0.1, "脸"), (0.0, 0.47, "脚下") })
+                                Perf.Log($"命中测试 {what} ({c.X + dx * pig.PetSize:0},{c.Y + dy * pig.PetSize:0}) → {Stage.DebugHit(new Point(c.X + dx * pig.PetSize, c.Y + dy * pig.PetSize))}");
+                        }
                         else if (cmd.StartsWith("play ")) Pets.LastOrDefault()?.Brain.Play(cmd[5..], true);
                     });
                 }

@@ -70,6 +70,7 @@ public partial class PetBrain
         if (!C.HpEnabled || amount <= 0 || Hp <= 0) return false;
         Hp = Math.Max(0, Hp - amount);
         if (!quiet) Log($"受伤 -{amount:0} 剩余 {Hp:0}/{MaxHp:0}");
+        AddMood(-amount * 0.3, Math.Min(10, amount * 0.5));
         _lastDamage = Now;
         if (C.ShowHpBar) w.ShowHp(Hp / MaxHp);
         if (Hp > 0 && amount > 15 && R.NextDouble() < 0.4) w.Say(Hp / MaxHp < 0.3 ? "快不行了……" : "好痛！", 900);
@@ -80,6 +81,7 @@ public partial class PetBrain
     void BecomeDead()
     {
         Log($"当场死亡 top={w.Top:0}");
+        AddMood(-20, 0);
         Forms.Clear(w);
         if (w.RestFrame != null) w.OverrideFrame = Forms.ToGray(w.RestFrame);
         Forms.XEyes(w.Props, Forms.GraySkin);

@@ -39,7 +39,7 @@ public partial class PetBrain
     void InitFood()
     {
         _hunger = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _hunger.Tick += (_, _) => HungerTick();
+        _hunger.Tick += (_, _) => { MoodTick(); HungerTick(); };
         _hunger.Start();
     }
 
@@ -55,6 +55,8 @@ public partial class PetBrain
             _nextHungryTalk = Now + Rand(30, 60);
             w.Say(Starving ? "要饿扁了……" : new[] { "饿了……", "好饿啊", "有吃的吗", "肚子咕咕叫" }[R.Next(4)], 2000);
         }
+        // 有吃的就有点兴奋
+        if (FoodWorld.AnyFor(w) && Excitement < 40) AddMood(0, 1);
         // 饿了又闲着，场上有吃的就去吃
         if (Hungry && CanEat && Interruptible && _current != "eat" && FoodWorld.AnyFor(w)) Play("eat");
     }
@@ -94,7 +96,7 @@ public partial class PetBrain
     public void SayStatus()
     {
         string hp = C.HpEnabled ? $" · 血 {Math.Max(0, Hp):0}/{MaxHp:0}" : "";
-        w.Say($"{Weight:0.#}kg · 饱食 {Satiety:0}{hp}", 4000);
+        w.Say($"{Weight:0.#}kg · 饱食 {Satiety:0}{hp} · 快乐 {Happiness:0} · 兴奋 {Excitement:0}", 4000);
     }
 
     // ---------- 吃 ----------
@@ -217,6 +219,7 @@ public partial class PetBrain
         Log($"吃完{kind.Name}：饱食 {Satiety:0}，体重 {Weight:0.0}kg，血 {Hp:0}/{MaxHp:0}");
         w.Say(new[] { "好吃！", "真香", "哼哼~ 满足", $"{kind.Name}！" }[R.Next(4)], 1500);
         w.Particle("♥", Pink, 0.5);
+        AddMood(8, 5);
     }
 
     /// <summary>投喂：在自己前面掉一份食物（调试用 --play feed:apple）。</summary>

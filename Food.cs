@@ -34,10 +34,7 @@ public static class FoodWorld
 {
     /// <summary>场上（没吃完、没消失）的食物。</summary>
     public static readonly List<FoodWindow> Items = new();
-    /// <summary>
-    /// 备用窗口：新建一个 WPF 透明窗口要 20~40ms，连点时会卡住动画。
-    /// 所以吃完 / 消失的食物窗口不关闭，挪到屏幕外放进这里，下次直接拿来用。
-    /// </summary>
+    /// <summary>吃完 / 消失的食物不丢掉，隐藏起来放进这里，下次直接拿来用。</summary>
     static readonly Stack<FoodWindow> Pool = new();
 
     /// <summary>新食物出现：通知附近的猪。</summary>
@@ -45,27 +42,6 @@ public static class FoodWorld
 
     /// <summary>场上最多几份：再多就让最早那份没人要的消失。</summary>
     public const int MaxItems = 24;
-
-    const int PoolTarget = 8;
-    static bool _warming;
-
-    /// <summary>
-    /// 后台预先建好备用窗口（每次只建一个，建完让出界面线程再建下一个），
-    /// 保证连点时直接复用、不用当场新建。
-    /// </summary>
-    public static void Prewarm()
-    {
-        if (_warming || Pool.Count >= PoolTarget || Pool.Count + Items.Count >= MaxItems + PoolTarget) return;
-        _warming = true;
-        Application.Current.Dispatcher.BeginInvoke(() =>
-        {
-            _warming = false;
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            Pool.Push(FoodWindow.CreateParked());
-            Perf.Log($"预建备用窗口 {sw.ElapsedMilliseconds}ms，备用 {Pool.Count}");
-            Prewarm();
-        }, System.Windows.Threading.DispatcherPriority.Background);
-    }
 
     internal static void Park(FoodWindow f)
     {
@@ -125,8 +101,7 @@ public static class FoodWorld
         Hook();
         long tShow = sw.ElapsedMilliseconds;
         Spawned?.Invoke(f);
-        Perf.Log($"投放食物：{(reused ? "复用" : "新建")}窗口 {tShow}ms，通知猪 {sw.ElapsedMilliseconds - tShow}ms，场上 {Items.Count} 份，备用 {Pool.Count}");
-        Prewarm(); // 用掉了就在后台补上
+        Perf.Log($"投放食物：{(reused ? "复用" : "新建")} {tShow}ms，通知猪 {sw.ElapsedMilliseconds - tShow}ms，场上 {Items.Count} 份，备用 {Pool.Count}");
         return f;
     }
 
@@ -146,10 +121,10 @@ public static class FoodWorld
 }
 
 /// <summary>
-/// 一份食物：透明小窗口，有重力，会落在任务栏上方或其他窗口的顶边上，可以用鼠标拖动、甩出去。
-/// 被咬一口就变小一圈，咬完消失；没人吃的话 2 分钟后淡出。窗口会被复用（见 FoodWorld.Pool）。
+/// 一份食物：有重力，会落在任务栏上方或其他窗口的顶边上，可以用鼠标拖动、甩出去。
+/// 被咬一口就变小一圈，咬完消失；没人吃的话 2 分钟后淡出。画在舞台上，吃完会被复用（见 FoodWorld.Pool）。
 /// </summary>
-public class FoodWindow : Window
+public class FoodWindow : UserControl, IStageItem
 {
     public FoodKind Kind { get; private set; } = FoodKind.All[0];
     public PetWindow? ClaimedBy { get; set; }
@@ -158,7 +133,11 @@ public class FoodWindow : Window
     readonly Image _img;
     readonly ScaleTransform _scale = new(1, 1);
     DateTime _born;
-    double _x, _y, _vy, _nextCheck;
+    double _x, _y, _vx, _vy, _nextCheck, _angle, _angV, _hitCooldown;
+    readonly RotateTransform _rot = new();
+    // 拖动：按下时光标相对窗口的偏移，以及最近 ~100ms 的轨迹（估算甩出速度）
+    Point _grab;
+    readonly Queue<(double t, Point p)> _trail = new();
     IntPtr _support;
     bool _grounded, _dragging, _gone = true;
 
@@ -184,29 +163,33 @@ public class FoodWindow : Window
         return bmp;
     }
 
-    const double ParkPos = -32000;
-
-    /// <summary>新建一个窗口并停在屏幕外待用。</summary>
+    /// <summary>新建一份放在舞台上、先隐藏待用。</summary>
     public static FoodWindow CreateParked()
     {
         var f = new FoodWindow();
-        f.Show();
+        Stage.Place(f, SystemParameters.WorkArea.Left, SystemParameters.WorkArea.Top);
         return f;
+    }
+
+    /// <summary>光标是否落在食物上（圆形范围，决定舞台要不要接收鼠标）。</summary>
+    public bool HitTest(Point stagePoint, Visual stage)
+    {
+        if (_gone) return false;
+        var lp = stage.TransformToDescendant(this)?.Transform(stagePoint);
+        if (lp is not Point q) return false;
+        double r = Width / 2 * Math.Max(0.4, _scale.ScaleX);
+        return (q - new Point(Width / 2, Height - r)).Length <= r;
     }
 
     FoodWindow()
     {
-        WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
-        ShowInTaskbar = false; ResizeMode = ResizeMode.NoResize; Topmost = true; ShowActivated = false;
         Width = Height = Config.Current.Size * 0.45;
-        Title = "PigPetFood";
-        Left = Top = ParkPos;
+        Visibility = Visibility.Collapsed;
         _img = new Image { RenderTransformOrigin = new Point(0.5, 1), RenderTransform = _scale, Cursor = Cursors.Hand };
         RenderOptions.SetBitmapScalingMode(_img, BitmapScalingMode.HighQuality);
-        Content = _img;
+        // 外层绕中心旋转（飞行 / 滚动），内层以底边为原点缩放（落地压扁、被咬变小）
+        Content = new Grid { Children = { _img }, RenderTransform = _rot, RenderTransformOrigin = new Point(0.5, 0.5) };
         _img.MouseLeftButtonDown += (_, _) => BeginDrag();
-        SourceInitialized += (_, _) => MakeToolWindow();
-        Closed += (_, _) => { _gone = true; FoodWorld.Items.Remove(this); };
     }
 
     /// <summary>拿出来当一份新食物。</summary>
@@ -224,38 +207,58 @@ public class FoodWindow : Window
         Opacity = 1;
         Width = Height = Config.Current.Size * 0.45;
         _born = DateTime.Now;
-        _x = x; _y = y; _vy = 0;
+        _x = x; _y = y; _vx = _vy = 0;
+        _angle = _angV = 0; _rot.Angle = 0;
+        _dragging = false;
         _grounded = false; _support = IntPtr.Zero; _gone = false;
-        // 移到位置并放到置顶层的最前面（不激活、不改大小）
-        var h = new WindowInteropHelper(this).Handle;
-        var m = PresentationSource.FromVisual(this)?.CompositionTarget.TransformToDevice ?? Matrix.Identity;
-        if (h != IntPtr.Zero)
-            SetWindowPos(h, new IntPtr(-1), (int)Math.Round(_x * m.M11), (int)Math.Round(_y * m.M22), 0, 0, 0x1 | 0x10);
-        else MoveWin();
+        Visibility = Visibility.Visible;
+        MoveWin();
+        Stage.BringToFront(this);
     }
 
-    /// <summary>收走：挪到屏幕外，返回自己（交给 FoodWorld.Park 放回备用）。</summary>
+    /// <summary>收走：隐藏，返回自己（交给 FoodWorld.Park 放回备用）。</summary>
     internal FoodWindow Remove()
     {
         _gone = true;
         ClaimedBy = null;
-        _x = _y = ParkPos;
-        MoveWin();
+        _dragging = false;
+        if (_img.IsMouseCaptured) _img.ReleaseMouseCapture();
+        Visibility = Visibility.Collapsed;
         return this;
     }
 
     // ---------- 物理 ----------
+    // 和小猪一样：重力、甩出去的水平速度、撞墙 / 落地反弹、地面摩擦并滚动，空中打转；
+    // 飞得快砸到猪会把猪撞开。
     internal void Step(double dt)
     {
-        if (_dragging || _gone) return;
+        if (_gone) return;
+        if (_dragging) { DragStep(); return; }
 
         // 太久没人吃：淡出消失
         if (ClaimedBy == null && (DateTime.Now - _born).TotalSeconds > 120) { Vanish(); return; }
 
         var wa = SystemParameters.WorkArea;
-        double floor = wa.Bottom - Height;
+        double floor = wa.Bottom - Height, r = Width / 2, deg = 180 / Math.PI;
+        _hitCooldown -= dt;
         if (_grounded)
         {
+            // 地上还在滚：摩擦减速，滚动角度与位移匹配
+            if (Math.Abs(_vx) > 3)
+            {
+                _vx *= Math.Exp(-3 * dt);
+                _x += _vx * dt;
+                Walls(wa);
+                _angV = _vx / r * deg;
+                _angle += _angV * dt;
+                if (_support != IntPtr.Zero && WindowPlatforms.Find(_x + Width * 0.3, _x + Width * 0.7, Bottom - 3, Bottom + 3) == null)
+                { _grounded = false; _support = IntPtr.Zero; } // 滚出了窗口边缘
+                Apply();
+                return;
+            }
+            _vx = 0;
+            // 停稳了：慢慢立正
+            if (Math.Abs(_angle) > 0.5) { _angle = NearestUpright(_angle, dt); Apply(); }
             // 站着的窗口没了 / 移走了：继续掉（每 0.25 秒查一次就够了）
             _nextCheck -= dt;
             if (_support == IntPtr.Zero || _nextCheck > 0) return;
@@ -267,23 +270,77 @@ public class FoodWindow : Window
 
         double prevBottom = Bottom;
         _vy += Config.Current.Gravity * dt;
+        _x += _vx * dt;
         _y += _vy * dt;
-        if (WindowPlatforms.Find(_x + Width * 0.2, _x + Width * 0.8, prevBottom - 1, Bottom) is { } p && _vy > 0)
+        Walls(wa);
+        if (_y < wa.Top) { _y = wa.Top; _vy = -_vy * 0.4; }
+        // 空中被带着转
+        _angV += (_vx / r * deg * 0.5 - _angV) * Math.Min(1, 2 * dt);
+        _angle += _angV * dt;
+        HitPigs();
+        // 离屏幕顶不到一个猪身高的窗口顶边不落（猪站上去头会出屏，够不着），继续往下掉
+        if (_vy > 0 && WindowPlatforms.Find(_x + Width * 0.2, _x + Width * 0.8, prevBottom - 1, Bottom) is { } p
+            && p.Y > wa.Top + Config.Current.Size * 1.05)
         {
             _y = p.Y - Height;
             Land(p.Hwnd);
         }
         else if (_y >= floor) { _y = floor; Land(IntPtr.Zero); }
+        Apply();
+    }
+
+    void Walls(Rect wa)
+    {
+        if (_x < wa.Left) { _x = wa.Left; _vx = -_vx * 0.5; _angV = -_angV * 0.5; }
+        if (_x > wa.Right - Width) { _x = wa.Right - Width; _vx = -_vx * 0.5; _angV = -_angV * 0.5; }
+    }
+
+    static double NearestUpright(double a, double dt)
+    {
+        double target = 360 * Math.Round(a / 360);
+        return a + (target - a) * Math.Min(1, dt * 6);
+    }
+
+    void Apply()
+    {
+        _rot.Angle = _angle;
         MoveWin();
+    }
+
+    /// <summary>飞得快砸到猪：把猪撞开、扣点血，自己弹回来。</summary>
+    void HitPigs()
+    {
+        double speed = Math.Sqrt(_vx * _vx + _vy * _vy);
+        if (speed < 600 || _hitCooldown > 0) return;
+        var c = Center;
+        foreach (var pig in Herd.Pets)
+        {
+            var d = pig.BodyCenter - c;
+            if (d.Length > pig.PetSize * 0.45 + Width * 0.3) continue;
+            _hitCooldown = 0.4;
+            pig.Brain.Damage(Math.Max(0, speed - 900) / 60);
+            pig.Brain.Knock(new Vector(_vx * 0.25, Math.Min(-250, _vy * 0.2)), Kind.Name + "砸我！");
+            _vx = -_vx * 0.4; _vy = -Math.Abs(_vy) * 0.3;
+            return;
+        }
     }
 
     void Land(IntPtr support)
     {
-        // 摔得快就弹一下，慢了就停住
-        if (_vy > 500) { _vy = -_vy * 0.3; return; }
+        // 摔得快就弹一下，慢了就停住（水平速度保留，接着在地上滚）
+        if (_vy > 500) { _vy = -_vy * 0.35; _vx *= 0.8; Squish(); return; }
         _vy = 0; _grounded = true; _support = support;
         Squish();
+        // 被扔出去后落地：认领它的猪重新找路，没人认领就叫最近的猪来吃
+        if (_thrown)
+        {
+            _thrown = false;
+            if (ClaimedBy != null && ClaimedBy.IsLoaded) ClaimedBy.Brain.NoticeFood();
+            else PetBrain.AssignFood(this);
+        }
     }
+
+    bool _thrown;
 
     /// <summary>落地时压扁一下再弹回（在当前大小的基础上，被咬小了也一样）。</summary>
     void Squish()
@@ -295,24 +352,54 @@ public class FoodWindow : Window
         _scale.BeginAnimation(ScaleTransform.ScaleYProperty, a);
     }
 
-    void MoveWin()
-    {
-        var h = new WindowInteropHelper(this).Handle;
-        if (h == IntPtr.Zero) { Left = _x; Top = _y; return; }
-        var m = PresentationSource.FromVisual(this)?.CompositionTarget.TransformToDevice ?? Matrix.Identity;
-        SetWindowPos(h, IntPtr.Zero, (int)Math.Round(_x * m.M11), (int)Math.Round(_y * m.M22), 0, 0, 0x1 | 0x4 | 0x10);
-    }
+    void MoveWin() => Stage.Place(this, _x, _y);
 
-    // ---------- 拖动 ----------
+    // ---------- 拖动 / 甩 ----------
+    // 和小猪一样每帧轮询鼠标，不用 DragMove（那个是模态的，拿不到松手时的速度）
+    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
+
+    static Point CursorDip() => Stage.CursorDip();
+
     void BeginDrag()
     {
         if (_gone) return;
+        var c = CursorDip();
+        _grab = new Point(c.X - _x, c.Y - _y);
         _dragging = true; _grounded = false; _support = IntPtr.Zero;
-        try { DragMove(); } catch (InvalidOperationException) { }
-        _dragging = false;
-        _x = Left; _y = Top; _vy = 0;
-        // 被挪了位置：原来认领它的猪重新找路
-        if (ClaimedBy != null && ClaimedBy.IsLoaded) ClaimedBy.Brain.NoticeFood();
+        _vx = _vy = 0;
+        _trail.Clear();
+        _img.CaptureMouse();
+    }
+
+    void DragStep()
+    {
+        int vk = System.Windows.Forms.SystemInformation.MouseButtonsSwapped ? 0x02 : 0x01;
+        double now = (DateTime.Now - _born).TotalSeconds;
+        if ((GetAsyncKeyState(vk) & 0x8000) == 0)
+        {
+            // 松手：按最近 ~100ms 的轨迹甩出去
+            _dragging = false;
+            _img.ReleaseMouseCapture();
+            if (_trail.Count >= 2)
+            {
+                var a = _trail.Peek();
+                var b = _trail.Last();
+                double dt = b.t - a.t;
+                if (dt > 0.005 && now - b.t < 0.1)
+                {
+                    _vx = Math.Clamp((b.p.X - a.p.X) / dt * Config.Current.ThrowStrength, -5000, 5000);
+                    _vy = Math.Clamp((b.p.Y - a.p.Y) / dt * Config.Current.ThrowStrength, -5000, 5000);
+                }
+            }
+            _angV = _vx / (Width / 2) * 180 / Math.PI * 0.5;
+            _thrown = true;
+            return;
+        }
+        var c = CursorDip();
+        _trail.Enqueue((now, c));
+        while (_trail.Count > 2 && now - _trail.Peek().t > 0.1) _trail.Dequeue();
+        _x = c.X - _grab.X; _y = c.Y - _grab.Y;
+        MoveWin();
     }
 
     // ---------- 被吃 ----------
@@ -336,16 +423,5 @@ public class FoodWindow : Window
         var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.8));
         fade.Completed += (_, _) => { if (_gone) FoodWorld.Park(Remove()); };
         BeginAnimation(OpacityProperty, fade);
-    }
-
-    // ---------- Win32 ----------
-    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
-    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
-    [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr h, int i, int v);
-
-    void MakeToolWindow()
-    {
-        var h = new WindowInteropHelper(this).Handle;
-        SetWindowLong(h, -20, GetWindowLong(h, -20) | 0x80 | 0x08000000); // 工具窗口、不抢焦点
     }
 }

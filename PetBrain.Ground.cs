@@ -43,7 +43,7 @@ public partial class PetBrain
     }
 
     /// <summary>这些动作自己处理位置（飞行、被拎着、叠罗汉等），巡检不插手。</summary>
-    bool MovesOnItsOwn => _dragging || _paused || _flying || _current is "fall" or "drag" or "clone" or "merge-out" or "duel"
+    bool MovesOnItsOwn => _dragging || _paused || _flying || _current is "fall" or "drag" or "clone" or "roam" or "merge-out" or "duel"
                           || _current.StartsWith("throw:") || _current.StartsWith("burst:");
 
     void GroundTick()

@@ -57,9 +57,9 @@ public partial class App : System.Windows.Application
         if (log != null)
             System.IO.File.AppendAllText(log, $"渲染级别 Tier={System.Windows.Media.RenderCapability.Tier >> 16} " +
                 $"渲染模式={System.Windows.Media.RenderOptions.ProcessRenderMode}" + Environment.NewLine);
+        Stage.Init(); // 所有小猪和食物都画在舞台（每个显示器一个透明窗口）上
         Herd.SettingsRequested += OpenSettings;
         FoodWorld.Spawned += PetBrain.AssignFood;
-        FoodWorld.Prewarm();
         var pet = Herd.Spawn();
 
         // 开发用：dotnet run -- --snapshot <目录>，把每个形态渲染成 PNG 便于检查
@@ -138,6 +138,14 @@ public partial class App : System.Windows.Application
             foreach (var p in Herd.Pets) p.Brain.SetPaused(_paused);
             BuildMenu();
         });
+
+        var roam = new WinForms.ToolStripMenuItem("满屏漫游模式") { Checked = Config.Current.RoamMode };
+        roam.Click += (_, _) =>
+        {
+            var c = Config.Current.Clone(); c.RoamMode = !c.RoamMode; Config.Save(c);
+            if (c.RoamMode) PlayAll("roam");
+        };
+        menu.Items.Add(roam);
 
         var through = new WinForms.ToolStripMenuItem("点击穿透") { Checked = Config.Current.ClickThrough };
         through.Click += (_, _) => { var c = Config.Current.Clone(); c.ClickThrough = !c.ClickThrough; Config.Save(c); };

@@ -1,14 +1,17 @@
-<Window x:Class="PigPet.PetWindow"
+<UserControl x:Class="PigPet.PetWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="PigPet" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        ShowInTaskbar="False" ResizeMode="NoResize" Topmost="True" Width="256" Height="256">
+        Width="256" Height="256">
     <Canvas x:Name="Root">
         <!-- 小猪本体：底部居中 -->
         <Grid x:Name="Pig" Cursor="Hand" Background="Transparent" RenderTransformOrigin="0.5,1">
             <!-- 体重（变胖）和被背上的猪压扁 -->
+            <!-- 满屏走时贴在墙上 / 天花板上：以脚底为圆心旋转 -->
             <Grid.RenderTransform>
-                <ScaleTransform x:Name="BodyScale" />
+                <TransformGroup>
+                    <ScaleTransform x:Name="BodyScale" />
+                    <RotateTransform x:Name="SurfaceRotate" />
+                </TransformGroup>
             </Grid.RenderTransform>
             <!-- 身后且不镜像的图层（比如带代码文字的电脑） -->
             <Viewbox IsHitTestVisible="False">
@@ -64,4 +67,4 @@
         <!-- 粒子层：爱心 / Zzz -->
         <Canvas x:Name="Fx" IsHitTestVisible="False" />
     </Canvas>
-</Window>
+</UserControl>

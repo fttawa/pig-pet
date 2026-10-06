@@ -49,13 +49,16 @@ public partial class PetBrain
         IgnoreCollision(clone, 1.2);
         clone.Brain.IgnoreCollision(w, 1.2);
         _ = clone.Dispatcher.BeginInvoke(() => clone.SetDir(side));
+        // 新分出来的很兴奋；因为无聊才分裂的，有了伴就开心了
+        clone.Brain.SetMood(Happiness, 70);
+        if (_boredClone) { _boredClone = false; AddMood(15, 30); }
         _throw = new Vector(-side * Rand(350, 600), -Rand(900, 1300));
         w.ResetTransform();
         await Fall(ct);
     }
 
     // ---------- 一键分裂：一次喷出 N 只 ----------
-    public const int HardMaxPets = 50; // 每只猪都是一个透明窗口，太多会卡
+    public const int HardMaxPets = 100; // 都画在同一个舞台窗口上，但每只猪仍有动画和物理开销
 
     /// <summary>一次性分裂出 count 只克隆，呈扇形喷出。超过上限时自动调高上限（最多 HardMaxPets）。</summary>
     async Task Burst(int count, CancellationToken ct)
@@ -475,7 +478,8 @@ public partial class PetBrain
 
     /// <summary>叠罗汉时：背上的猪只做原地的动作；背着猪的不翻滚、不乱跑，免得把上面的颠下来。</summary>
     bool StackAllowed(string action) =>
-        IsRiding ? action is "lazy" or "idle" or "sleep" or "form" or "shake" or "spin" or "jump"
+        action == "roam" ? !IsRiding && !HasRider
+        : IsRiding ? action is "lazy" or "idle" or "sleep" or "form" or "shake" or "spin" or "jump"
         : !HasRider || action is "lazy" or "idle" or "walk" or "sleep" or "form" or "shake";
 
     /// <summary>能爬上去的猪：站稳了、背上没猪、不在自己脚下；可以是站在别的猪背上的（往上叠）。</summary>

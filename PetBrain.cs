@@ -66,7 +66,9 @@ public partial class PetBrain
         Log($"开始 {name}");
         try
         {
+            LeaveSurface(); // 正贴在墙上 / 天花板上被打断：先换算回普通姿势
             _current = name;
+            MoodForAction(name);
             w.ShowLazy(name == "lazy");
             bool airborne = name == "fall" || name.StartsWith("throw:");
             // 死着的时候被切去做别的事：先复活，清掉灰色和 ×× 眼
@@ -81,7 +83,7 @@ public partial class PetBrain
                 "clone" => Clone(ct), "visit" => Visit(ct), "greet" => GreetInvited(ct), "pile" => Pile(ct),
                 "beneath" => Beneath(ct), "chase" => Chase(ct), "follow" => Follow(ct), "merge" => Merge(ct),
                 "merge-out" => MergeOut(ct), "duel" => Duel(ct), "duel-b" => DuelFollower(ct),
-                "eat" => Eat(ct), "hopoff" => HopOff(ct), "status" => Status(ct),
+                "eat" => Eat(ct), "hopoff" => HopOff(ct), "status" => Status(ct), "roam" => Roam(ct),
                 _ when name.StartsWith("feed:") => Feed(name[5..], ct),
                 // 调试：weight:N 直接设定体重
                 _ when name.StartsWith("weight:") && double.TryParse(name[7..], out var kg) => SetWeight(kg, ct),
@@ -133,6 +135,9 @@ public partial class PetBrain
             return "sleep";
         if (Hungry && CanEat && FoodWorld.AnyFor(w)) return "eat";
         if (IsRiding && !HasRider && R.NextDouble() < 0.3) return "hopoff";
+        if (MoodChoice() is { } mood) return mood;
+        // 满屏漫游模式：大部分时间都在满屏走
+        if (C.RoamMode && !IsRiding && !HasRider && w.PosY >= w.MaxY - 2 && R.NextDouble() < 0.7) return "roam";
         var pool = C.Actions.Where(a => a.Value.Enabled && a.Value.Weight > 0 && CoopAllowed(a.Key) && StackAllowed(a.Key)).ToList();
         if (pool.Count == 0) return "lazy";
         double r = R.NextDouble() * pool.Sum(a => a.Value.Weight);
@@ -153,6 +158,7 @@ public partial class PetBrain
         _lastInteract = DateTime.Now;
         if (dbl) { Play("roll"); return; }
         w.Particle("♥", Pink, 0.35); w.Particle("♥", Pink, 0.6);
+        AddMood(6, 10); // 被摸了
         if (C.Bubbles.Count > 0) w.Say(C.Bubbles[R.Next(C.Bubbles.Count)]);
         Play(new[] { "jump", "shake", "spin", "roll" }[R.Next(4)]);
     }
@@ -176,6 +182,7 @@ public partial class PetBrain
         // 越重越甩不动
         _throw = velocity * C.ThrowStrength / Math.Sqrt(Math.Max(1, CarryMass));
         if (_throw.Length > 1500) w.Say("哇啊啊——", 1200);
+        AddMood(0, Math.Min(40, 5 + _throw.Length / 60)); // 被甩出去：刺激！
         Play("fall");
     }
 
