@@ -35,6 +35,7 @@ public static class Forms
         new("angry", "生气猪", "哼！"),
         new("peek", "?!猪猪!?", "?!猪猪!?"),
         new("flat", "摊平猪", "摊平了……"),
+        new("dead", "死猪", "（死了）"),
     };
 
     // 官方配色
@@ -66,6 +67,7 @@ public static class Forms
             case "code": SpiralEyes(w.Props); Laptop(w.Behind, w.Dir > 0); break;
             case "token": ContentEyes(w.Props); Bowl(w.Front, w.Dir > 0 ? 380 : -60); break;
             case "cry": Tears(w.Props); break;
+            case "dead": XEyes(w.Props, GraySkin); break;
             case "angry": AngryEyes(w.Props); AngerMark(w.Props); break;
         }
     }

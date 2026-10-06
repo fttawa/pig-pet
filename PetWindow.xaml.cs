@@ -127,6 +127,7 @@ public partial class PetWindow : Window
                 if (id == "peek") { Anim.RenderTransformOrigin = new Point(0.29, 0.55); AScale.ScaleX = AScale.ScaleY = 2.4; AMove.X = PetSize * 0.21; AMove.Y = PetSize * 0.1; }
                 if (id == "flat") { Anim.RenderTransformOrigin = new Point(0.5, 0.92); AScale.ScaleX = 1.35; AScale.ScaleY = 0.5; }
                 if (id == "token") { Anim.RenderTransformOrigin = new Point(0.5, 0.5); ARotate.Angle = 165; }
+                if (id == "dead") { OverrideFrame = Forms.ToGray(RestFrame); Anim.RenderTransformOrigin = new Point(0.5, 0.5); ARotate.Angle = 180; }
                 if (id == "bite") { OverrideFrame = Forms.ToGray(RestFrame); Anim.RenderTransformOrigin = new Point(0.5, 0.5); ARotate.Angle = 180; }
                 await Task.Delay(150);
                 UpdateLayout();

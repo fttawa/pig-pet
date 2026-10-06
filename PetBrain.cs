@@ -229,18 +229,21 @@ public partial class PetBrain
         return on.Count == 0 ? "benzene" : on[R.Next(on.Count)].Id;
     }
 
-    async Task Form(string id, CancellationToken ct)
+    /// <summary>撞击速度超过这个值（DIP/s）就会摔死。</summary>
+    const double DeadImpact = 2600;
+
+    async Task Form(string id, CancellationToken ct, double? duration = null)
     {
         try
         {
             _form = id;
             Forms.Apply(w, id);
             // 形态期间锁定 rest 帧，叠加的表情/道具才能对准五官
-            w.OverrideFrame = id == "bite" && w.RestFrame != null ? Forms.ToGray(w.RestFrame) : w.RestFrame;
+            w.OverrideFrame = id is "bite" or "dead" && w.RestFrame != null ? Forms.ToGray(w.RestFrame) : w.RestFrame;
             var f = Forms.All.FirstOrDefault(x => x.Id == id);
             w.Say(f?.Text, 3000);
-            double dur = Rand(8, 14), nextZ = 1;
-            int angryBeat = 0;
+            double dur = duration ?? Rand(8, 14), nextZ = 1;
+            int angryBeat = 0, deadTick = -1;
             bool bitten = false;
             await Animate(dur, (t, _) =>
             {
@@ -319,6 +322,19 @@ public partial class PetBrain
                     double sob = Math.Max(0, Math.Sin(2 * Math.PI * t / 0.7));
                     w.AScale.ScaleY = 1 - 0.04 * sob; w.AScale.ScaleX = 1 + 0.02 * sob;
                     w.AMove.Y = Size * 0.02 * sob;
+                }
+                else if (id == "dead")
+                {
+                    w.Anim.RenderTransformOrigin = new Point(0.5, 0.5);
+                    // 每 60ms 换一个随机小抖动，模拟原图三帧来回抽
+                    int tick = (int)(t / 0.06);
+                    if (tick != deadTick)
+                    {
+                        deadTick = tick;
+                        w.ARotate.Angle = 180 + Rand(-2.5, 2.5);
+                        w.AMove.X = Size * Rand(-0.012, 0.012);
+                        w.AMove.Y = -Size * 0.06 + Size * Rand(-0.01, 0.01);
+                    }
                 }
                 else if (id == "bite")
                 {
@@ -474,7 +490,7 @@ public partial class PetBrain
         var b = w.PhysicsBounds();
         double x = w.Left, y = w.Top, vx = _throw.X, vy = _throw.Y;
         double g = C.Gravity, e = C.Bounce, r = Size / 2, deg = 180 / Math.PI;
-        double angV = 0, squash = 0, squashT = 9;
+        double angV = 0, squash = 0, squashT = 9, maxImpact = 0;
         _throw = default;
 
         // 保留松手时的角度。旋转支点要从抓取点换到身体中心才能正常滚动，
@@ -507,6 +523,7 @@ public partial class PetBrain
 
             void Hit(double impact)
             {
+                maxImpact = Math.Max(maxImpact, impact);
                 if (impact < 150) return;
                 squash = Math.Min(0.3, impact / 5000); squashT = 0;
             }
@@ -537,6 +554,14 @@ public partial class PetBrain
             if (restTime > 0.15 && squashT > 0.5) break;
         }
         await EaseHome(0.5, ct); // 滚停后摆正
+        // 摔得太狠：直接“摔死”，抽搐一会儿再爬起来
+        if (maxImpact > DeadImpact && (!C.FormsEnabled.TryGetValue("dead", out var deadOn) || deadOn))
+        {
+            w.Clamp();
+            await Form("dead", ct, Rand(2.5, 4));
+            w.Say("诈尸！", 1200);
+            return;
+        }
         w.Clamp();
     }
 
