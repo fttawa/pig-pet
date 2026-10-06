@@ -223,8 +223,8 @@ public partial class PetBrain
     /// <summary>水平移动窗口，碰边掉头。</summary>
     void Step(double pxPerSec, double dt)
     {
-        w.MoveTo(w.Left + w.Dir * pxPerSec * dt, w.Top);
-        if ((w.Dir < 0 && w.Left <= w.MinX + 0.5) || (w.Dir > 0 && w.Left >= w.MaxX - 0.5)) w.SetDir(-w.Dir);
+        w.MoveTo(w.PosX + w.Dir * pxPerSec * dt, w.PosY);
+        if ((w.Dir < 0 && w.PosX <= w.MinX + 0.5) || (w.Dir > 0 && w.PosX >= w.MaxX - 0.5)) w.SetDir(-w.Dir);
     }
 
     // ---------- 动作 ----------
@@ -381,16 +381,19 @@ public partial class PetBrain
         w.AScale.ScaleX = s; w.AScale.ScaleY = 2 - s;
     }, ct);
 
-    Task Walk(CancellationToken ct)
+    async Task Walk(CancellationToken ct)
     {
         if (R.NextDouble() < 0.5) w.SetDir(-w.Dir);
-        return Animate(Rand(3, 7), (t, dt) =>
+        double x0 = w.PosX, dur = Rand(3, 7);
+        var sw = Stopwatch.StartNew();
+        await Animate(dur, (t, dt) =>
         {
             double ph = Math.Sin(2 * Math.PI * t * K / 0.5);
             w.ARotate.Angle = 6 * ph;
             w.AMove.Y = -Math.Abs(ph) * Size * 0.06;
             Step(60 * K, dt);
         }, ct);
+        Log($"散步 {sw.Elapsed.TotalSeconds:0.0}s 移动 {Math.Abs(w.PosX - x0):0} DIP（期望约 {60 * K * sw.Elapsed.TotalSeconds:0}）");
     }
 
     async Task Roll(CancellationToken ct)

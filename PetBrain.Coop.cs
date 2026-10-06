@@ -323,7 +323,7 @@ public partial class PetBrain
                 double ph = Math.Sin(2 * Math.PI * t / 0.25);
                 w.ARotate.Angle = 8 * ph;
                 w.AMove.Y = -Math.Abs(ph) * Size * 0.06;
-                w.MoveTo(w.Left + w.Dir * 420 * K * dt, w.Top);
+                w.MoveTo(w.PosX + w.Dir * 420 * K * dt, w.PosY);
                 if (Math.Abs(target.BodyCenter.X - w.BodyCenter.X) < Size * 0.8) hit = true;
             }, ct, () => hit || !target.IsLoaded);
             if (!hit) return;
@@ -364,7 +364,7 @@ public partial class PetBrain
                 w.ARotate.Angle = 8 * ph;
                 w.AMove.Y = -Math.Abs(ph) * Size * 0.06;
                 if (Math.Abs(leader.BodyCenter.X - w.BodyCenter.X) > Size * 0.8)
-                    w.MoveTo(w.Left + w.Dir * 420 * K * dt, w.Top);
+                    w.MoveTo(w.PosX + w.Dir * 420 * K * dt, w.PosY);
             }, ct, () => over);
         }
         finally { Forms.Clear(w); }
@@ -458,7 +458,7 @@ public partial class PetBrain
             double ph = Math.Sin(2 * Math.PI * t * K / 0.4);
             w.ARotate.Angle = 7 * ph;
             w.AMove.Y = -Math.Abs(ph) * Size * 0.07;
-            w.MoveTo(w.Left + w.Dir * Math.Min(Math.Abs(dx) - gap + 1, speed * dt), w.Top);
+            w.MoveTo(w.PosX + w.Dir * Math.Min(Math.Abs(dx) - gap + 1, speed * dt), w.PosY);
         }, ct, () => arrived);
         Log($"WalkTo 结束 arrived={arrived} 我x={w.BodyCenter.X:0} 目标x={target.BodyCenter.X:0}");
         return arrived;

@@ -273,15 +273,23 @@ public partial class PetWindow : Window
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
     /// <summary>一次系统调用同时设置 X/Y，避免分别改 Left/Top 造成两次移动和抖动。</summary>
+    // 精确的小数坐标（DIP）。窗口只能停在整数像素上，如果每帧都读回取整后的 Left 再加位移，
+    // 慢速移动（每帧不到半个像素）会被舍掉，看起来就走不动了。所以位移累加在这里。
+    double _px = double.NaN, _py = double.NaN;
+
+    /// <summary>精确的窗口横坐标（DIP）。窗口被外部挪动过（拖动等）时自动以实际位置为准。</summary>
+    public double PosX { get { SyncPos(); return _px; } }
+    public double PosY { get { SyncPos(); return _py; } }
+
+    void SyncPos()
+    {
+        if (double.IsNaN(_px) || Math.Abs(Left - _px) > 1.5 || Math.Abs(Top - _py) > 1.5) { _px = Left; _py = Top; }
+    }
+
     public void MoveTo(double x, double y)
     {
         var wa = WorkArea();
-        x = Math.Clamp(x, wa.Left, wa.Right - Width);
-        y = Math.Clamp(y, wa.Top, wa.Bottom - Height);
-        var h = new WindowInteropHelper(this).Handle;
-        if (h == IntPtr.Zero) { Left = x; Top = y; return; }
-        var (sx, sy) = Dpi();
-        SetWindowPos(h, IntPtr.Zero, (int)Math.Round(x * sx), (int)Math.Round(y * sy), 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        MoveRaw(Math.Clamp(x, wa.Left, wa.Right - Width), Math.Clamp(y, wa.Top, wa.Bottom - Height));
     }
 
     /// <summary>小猪身体可活动的窗口坐标范围（窗口透明边缘可以出屏，让身体贴到屏幕边）。</summary>
@@ -294,8 +302,11 @@ public partial class PetWindow : Window
 
     public void MoveRaw(double x, double y)
     {
+        _px = x; _py = y;
+        var h = new WindowInteropHelper(this).Handle;
+        if (h == IntPtr.Zero) { Left = x; Top = y; return; }
         var (sx, sy) = Dpi();
-        SetWindowPos(new WindowInteropHelper(this).Handle, IntPtr.Zero, (int)Math.Round(x * sx), (int)Math.Round(y * sy), 0, 0,
+        SetWindowPos(h, IntPtr.Zero, (int)Math.Round(x * sx), (int)Math.Round(y * sy), 0, 0,
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
