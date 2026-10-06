@@ -80,6 +80,10 @@
                 <DockPanel><TextBlock Text="最多几只（自我复制 / 多开）" /><TextBox x:Name="MaxPetsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
                 <TextBlock Text="再次运行程序会从天上掉下一只新猪" Foreground="#999" />
 
+                <TextBlock Text="性能" Style="{StaticResource H}" />
+                <DockPanel><TextBlock Text="动画帧率上限（0 = 跟随屏幕）" /><TextBox x:Name="FpsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <TextBlock x:Name="FpsInfo" Foreground="#999" />
+
                 <TextBlock Text="窗口" Style="{StaticResource H}" />
                 <CheckBox x:Name="TopC" Content="总在最前" Margin="0,3" />
                 <CheckBox x:Name="ThroughC" Content="点击穿透（可在托盘菜单关闭）" Margin="0,3" />

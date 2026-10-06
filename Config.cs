@@ -25,6 +25,7 @@ public class Config
     public double Friction { get; set; } = 2.5;    // 地面摩擦
     public double ThrowStrength { get; set; } = 1; // 甩出力度倍率
     public int MaxPets { get; set; } = 6;          // 猪群上限
+    public int FpsLimit { get; set; }              // 动画帧率上限，0 = 跟随屏幕刷新率
     public bool HpEnabled { get; set; } = true;    // 隐藏血条：摔太狠会死
     public double MaxHp { get; set; } = 100;       // 耐摔程度
     public double HpRegen { get; set; } = 3;       // 每秒回血

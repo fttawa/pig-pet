@@ -40,23 +40,32 @@ public static class LottieFrames
         }
     }
 
+    /// <summary>
+    /// 多核并行渲染：Skottie 的动画对象不能多线程共用，所以每个工作线程各自加载一份动画、
+    /// 各用一块画布，按帧号分段渲染。帧之间互不依赖，结果与单线程完全一致。
+    /// </summary>
     static Task<BitmapSource[]> RenderAsync(byte[] json, int pixelSize) => Task.Run(() =>
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         ReadRestMarker(json);
-        using var stream = new MemoryStream(json);
-        if (!Animation.TryCreate(stream, out var anim) || anim == null)
-            throw new InvalidDataException("无法解析 Lottie 文件");
-        using (anim)
+        int count;
+        using (var probe = CreateAnimation(json)) count = Math.Max(1, (int)Math.Round(probe.Duration.TotalSeconds * Fps));
+
+        var frames = new BitmapSource[count];
+        int workers = Math.Clamp(Environment.ProcessorCount - 1, 1, 8); // 给 UI 线程留一个核
+        if (int.TryParse(Environment.GetEnvironmentVariable("PIGPET_WORKERS"), out var wOverride) && wOverride > 0) workers = wOverride; // 调试：指定线程数
+        int chunk = (count + workers - 1) / workers;
+        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, wi =>
         {
-            int count = Math.Max(1, (int)Math.Round(anim.Duration.TotalSeconds * Fps));
-            var frames = new BitmapSource[count];
+            int from = wi * chunk, to = Math.Min(count, from + chunk);
+            if (from >= to) return;
+            using var anim = CreateAnimation(json);
             var info = new SKImageInfo(pixelSize, pixelSize, SKColorType.Bgra8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info);
             var canvas = surface.Canvas;
             var rect = new SKRect(0, 0, pixelSize, pixelSize);
             var buffer = new byte[pixelSize * pixelSize * 4];
-
-            for (int i = 0; i < count; i++)
+            for (int i = from; i < to; i++)
             {
                 anim.SeekFrameTime(TimeSpan.FromSeconds(i / Fps));
                 canvas.Clear(SKColors.Transparent);
@@ -72,9 +81,18 @@ public static class LottieFrames
                 bmp.Freeze(); // 冻结后可跨线程交给 UI
                 frames[i] = bmp;
             }
-            return frames;
-        }
+        });
+        Perf.Log($"预渲染 {count} 帧 @{pixelSize}px，{workers} 线程，用时 {sw.ElapsedMilliseconds}ms");
+        return frames;
     });
+
+    static Animation CreateAnimation(byte[] json)
+    {
+        using var stream = new MemoryStream(json);
+        if (!Animation.TryCreate(stream, out var anim) || anim == null)
+            throw new InvalidDataException("无法解析 Lottie 文件");
+        return anim;
+    }
 
     static void ReadRestMarker(byte[] json)
     {

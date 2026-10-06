@@ -164,7 +164,10 @@ public partial class PetBrain
     // ---------- 帧工具 ----------
     // WPF 的 Rendering 事件在一帧里可能触发多次（窗口移动会引发额外渲染），
     // 必须按 RenderingTime 去重，否则一帧跑很多次、每次 dt≈0，位移取整后等于没动。
-    static TimeSpan _frameTime;
+    // 另外窗口一动 Rendering 就会额外触发（实测约 250Hz），远超屏幕刷新率，白白多算多画。
+    // 所以所有动画逻辑统一按“逻辑帧”推进：两次逻辑帧之间至少隔一个屏幕刷新周期。
+    static long _frameSeq;
+    static TimeSpan? _lastFrame;
     static bool _frameHooked;
 
     static Task NextFrame()
@@ -172,14 +175,21 @@ public partial class PetBrain
         if (!_frameHooked)
         {
             _frameHooked = true;
-            CompositionTarget.Rendering += (_, e) => _frameTime = ((RenderingEventArgs)e).RenderingTime;
+            // 先订阅，保证每次 Rendering 时它最先执行，后面的等待者看到的是本次的帧号
+            CompositionTarget.Rendering += (_, e) =>
+            {
+                var rt = ((RenderingEventArgs)e).RenderingTime;
+                if (_lastFrame is TimeSpan last && rt - last < Perf.FrameInterval) return; // 还没到下一个刷新周期
+                _lastFrame = rt;
+                _frameSeq++;
+            };
         }
-        var start = _frameTime;
+        long start = _frameSeq;
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         EventHandler? h = null;
-        h = (_, e) =>
+        h = (_, _) =>
         {
-            if (((RenderingEventArgs)e).RenderingTime == start) return; // 还是同一帧
+            if (_frameSeq == start) return; // 还是同一逻辑帧
             CompositionTarget.Rendering -= h;
             tcs.TrySetResult();
         };

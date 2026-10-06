@@ -42,6 +42,8 @@ public partial class SettingsWindow : Window
         IntMin.Text = c.IntervalMin.ToString(); IntMax.Text = c.IntervalMax.ToString();
         SleepAfter.Text = c.SleepAfter.ToString();
         MaxPetsT.Text = c.MaxPets.ToString();
+        FpsT.Text = c.FpsLimit.ToString();
+        FpsInfo.Text = $"屏幕刷新率 {Perf.MonitorHz}Hz，当前动画帧率 {Perf.EffectiveFps}，硬件加速级别 {System.Windows.Media.RenderCapability.Tier >> 16}（2 = 完整加速）";
         HpC.IsChecked = c.HpEnabled; MaxHpS.Value = c.MaxHp; ShowHpC.IsChecked = c.ShowHpBar;
         GravityS.Value = c.Gravity; BounceS.Value = c.Bounce; FrictionS.Value = c.Friction; ThrowS.Value = c.ThrowStrength;
         TopC.IsChecked = c.AlwaysOnTop; ThroughC.IsChecked = c.ClickThrough; AutoC.IsChecked = c.AutoStart;
@@ -66,6 +68,7 @@ public partial class SettingsWindow : Window
         c.IntervalMax = Math.Max(c.IntervalMin, Num(IntMax.Text, c.IntervalMax, 1));
         c.SleepAfter = Num(SleepAfter.Text, c.SleepAfter, 10);
         c.MaxPets = (int)Math.Min(PetBrain.HardMaxPets, Num(MaxPetsT.Text, c.MaxPets, 1));
+        c.FpsLimit = (int)Math.Min(360, Num(FpsT.Text, 0, 0));
         c.HpEnabled = HpC.IsChecked == true; c.MaxHp = MaxHpS.Value; c.ShowHpBar = ShowHpC.IsChecked == true;
         c.Gravity = GravityS.Value; c.Bounce = BounceS.Value; c.Friction = FrictionS.Value; c.ThrowStrength = ThrowS.Value;
         c.AlwaysOnTop = TopC.IsChecked == true; c.ClickThrough = ThroughC.IsChecked == true;

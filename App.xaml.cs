@@ -27,6 +27,11 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // 记录渲染级别（2 = 完整硬件加速），便于排查性能
+        var log = Environment.GetEnvironmentVariable("PIGPET_LOG");
+        if (log != null)
+            System.IO.File.AppendAllText(log, $"渲染级别 Tier={System.Windows.Media.RenderCapability.Tier >> 16} " +
+                $"渲染模式={System.Windows.Media.RenderOptions.ProcessRenderMode}" + Environment.NewLine);
         Herd.SettingsRequested += OpenSettings;
         var pet = Herd.Spawn();
 
