@@ -36,6 +36,7 @@ public partial class PetBrain
     public void Start(Vector velocity = default, bool airborne = false)
     {
         Config.Changed += _onConfig;
+        InitHealth();
         if (airborne) { _throw = velocity; Play("fall"); return; }
         w.Say(Herd.Count > 1 ? "又来一只！" : "哼哼~ 我来啦");
         Play("lazy");
@@ -44,6 +45,7 @@ public partial class PetBrain
     public void Stop()
     {
         Config.Changed -= _onConfig;
+        StopHealth();
         _cts?.Cancel();
     }
 
@@ -63,8 +65,11 @@ public partial class PetBrain
         {
             _current = name;
             w.ShowLazy(name == "lazy");
-            // 从被打断的姿势平滑过渡；下落例外：直接带着松手时的角度飞出去
-            if (name != "fall") await EaseHome(0.15, ct);
+            bool airborne = name == "fall" || name.StartsWith("throw:");
+            // 死着的时候被切去做别的事：先复活，清掉灰色和 ×× 眼
+            if (IsDead && !airborne && name != "drag") { Hp = MaxHp * 0.3; Forms.Clear(w); }
+            // 从被打断的姿势平滑过渡；飞出去的例外：直接带着当时的角度飞
+            if (!airborne) await EaseHome(0.15, ct);
             await (name switch
             {
                 "idle" => Idle(ct), "walk" => Walk(ct), "roll" => Roll(ct), "jump" => Jump(ct),
@@ -73,6 +78,8 @@ public partial class PetBrain
                 "clone" => Clone(ct), "visit" => Visit(ct), "greet" => GreetInvited(ct), "pile" => Pile(ct),
                 "beneath" => Beneath(ct), "chase" => Chase(ct), "follow" => Follow(ct), "merge" => Merge(ct),
                 "merge-out" => MergeOut(ct), "duel" => Duel(ct), "duel-b" => DuelFollower(ct),
+                // 调试 / 脚本：throw:vx,vy 以指定速度把小猪抛出去
+                _ when name.StartsWith("throw:") && TryParseVector(name[6..], out var tv) => ThrowAndFall(tv, ct),
                 _ when name.StartsWith("burst:") && int.TryParse(name[6..], out var n) => Burst(n, ct),
                 _ when name.StartsWith("form:") => Form(name[5..], ct),
                 _ => Lazy(ct),
@@ -138,6 +145,7 @@ public partial class PetBrain
     public void BeginDrag()
     {
         _dragging = true;
+        if (IsDead) { Hp = MaxHp * 0.3; Forms.Clear(w); }
         w.Say(_form == "stand" ? "挪一次五块！" : "放我下来！", 1500);
         Play("drag");
     }
@@ -228,9 +236,6 @@ public partial class PetBrain
         var on = Forms.All.Where(f => !C.FormsEnabled.TryGetValue(f.Id, out var e) || e).ToList();
         return on.Count == 0 ? "benzene" : on[R.Next(on.Count)].Id;
     }
-
-    /// <summary>撞击速度超过这个值（DIP/s）就会摔死。</summary>
-    const double DeadImpact = 2600;
 
     async Task Form(string id, CancellationToken ct, double? duration = null)
     {
@@ -490,7 +495,8 @@ public partial class PetBrain
         var b = w.PhysicsBounds();
         double x = w.Left, y = w.Top, vx = _throw.X, vy = _throw.Y;
         double g = C.Gravity, e = C.Bounce, r = Size / 2, deg = 180 / Math.PI;
-        double angV = 0, squash = 0, squashT = 9, maxImpact = 0;
+        double angV = 0, squash = 0, squashT = 9;
+        bool dead = IsDead; // 被撞飞时可能已经没血了
         _throw = default;
 
         // 保留松手时的角度。旋转支点要从抓取点换到身体中心才能正常滚动，
@@ -523,7 +529,7 @@ public partial class PetBrain
 
             void Hit(double impact)
             {
-                maxImpact = Math.Max(maxImpact, impact);
+                Damage(ImpactDamage(impact));
                 if (impact < 150) return;
                 squash = Math.Min(0.3, impact / 5000); squashT = 0;
             }
@@ -542,6 +548,8 @@ public partial class PetBrain
 
             ang += angV * dt;
             CollideOthers(x, y, ref vx, ref vy);
+            // 血量在这一帧归零：当场死亡，动量照旧，尸体继续翻滚弹跳
+            if (!dead && IsDead) { dead = true; BecomeDead(); }
 
             squashT += dt;
             double s = 1 + squash * Math.Exp(-8 * squashT) * Math.Cos(2 * Math.PI * 3 * squashT);
@@ -553,15 +561,13 @@ public partial class PetBrain
             restTime = grounded && Math.Abs(vx) < 15 ? restTime + dt : 0;
             if (restTime > 0.15 && squashT > 0.5) break;
         }
-        await EaseHome(0.5, ct); // 滚停后摆正
-        // 摔得太狠：直接“摔死”，抽搐一会儿再爬起来
-        if (maxImpact > DeadImpact && (!C.FormsEnabled.TryGetValue("dead", out var deadOn) || deadOn))
+        if (dead)
         {
+            await DeadSettleAndRevive(ang, ct);
             w.Clamp();
-            await Form("dead", ct, Rand(2.5, 4));
-            w.Say("诈尸！", 1200);
             return;
         }
+        await EaseHome(0.5, ct); // 滚停后摆正
         w.Clamp();
     }
 

@@ -70,6 +70,12 @@
                 <DockPanel><TextBlock Text="甩出力度" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=ThrowS, StringFormat=0.0}" />
                     <Slider x:Name="ThrowS" DockPanel.Dock="Right" Minimum="0" Maximum="2" TickFrequency="0.1" /></DockPanel>
 
+                <TextBlock Text="血条" Style="{StaticResource H}" />
+                <CheckBox x:Name="HpC" Content="启用隐藏血条（摔太狠会当场死掉）" Margin="0,3" />
+                <DockPanel><TextBlock Text="耐摔程度" /><TextBlock DockPanel.Dock="Right" Width="40" TextAlignment="Right" Text="{Binding Value, ElementName=MaxHpS, StringFormat=0}" />
+                    <Slider x:Name="MaxHpS" DockPanel.Dock="Right" Minimum="30" Maximum="400" TickFrequency="10" /></DockPanel>
+                <CheckBox x:Name="ShowHpC" Content="受伤时在头顶显示血条" Margin="0,3" />
+
                 <TextBlock Text="猪群" Style="{StaticResource H}" />
                 <DockPanel><TextBlock Text="最多几只（自我复制 / 多开）" /><TextBox x:Name="MaxPetsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
                 <TextBlock Text="再次运行程序会从天上掉下一只新猪" Foreground="#999" />

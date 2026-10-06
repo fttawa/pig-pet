@@ -330,6 +330,7 @@ public partial class PetBrain
 
             for (int i = 0; i < 6; i++) w.Particle("✦", Gold, w.Dir > 0 ? 0.9 + R.NextDouble() * 0.4 : -0.3 + R.NextDouble() * 0.4);
             bool iLose = R.Next(2) == 0;
+            (iLose ? this : target.Brain).Damage(35);
             double myPower = iLose ? 900 : 450, hisPower = iLose ? 450 : 900;
             Forms.Clear(target);
             target.Brain.Knock(new Vector(w.Dir * hisPower, -hisPower * 0.9), iLose ? "我赢了！" : "呜……");
@@ -421,6 +422,8 @@ public partial class PetBrain
             if (approach < 150) continue;
             _hitCooldown[o] = now + 0.4;
             o.Brain.IgnoreCollision(w, 0.4); // 对方也别立刻反撞回来
+            o.Brain.Damage(Math.Max(0, approach - 600) / 25);
+            Damage(Math.Max(0, approach - 600) / 45);
             // 等质量弹性碰撞（打折）：对方拿走大部分法向动量
             o.Brain.Knock(new Vector(n.X * approach * 0.8, n.Y * approach * 0.8 - 350));
             vx -= n.X * approach * 0.9;

@@ -108,7 +108,7 @@ public static class Forms
 
     // ---------- 表情 ----------
     // 皮肤 #FFD2B1 经 ToGray 处理后的灰度，蛇咬猪时用它遮眼睛
-    static readonly Brush GraySkin = Hex("#D7D7D7");
+    public static readonly Brush GraySkin = Hex("#D7D7D7");
 
     static void CoverEyes(Canvas c, Brush? skin = null)
     {

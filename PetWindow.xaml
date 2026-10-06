@@ -46,6 +46,11 @@
         <!-- 叠罗汉的群友们（压在本体上面） -->
         <Canvas x:Name="Stack" IsHitTestVisible="False" />
 
+        <!-- 血条（默认隐藏，受伤时短暂显示） -->
+        <Border x:Name="HpBar" Height="8" Background="#66000000" CornerRadius="4" Opacity="0" IsHitTestVisible="False">
+            <Rectangle x:Name="HpFill" HorizontalAlignment="Left" RadiusX="3" RadiusY="3" Margin="1" Fill="#4CAF50" />
+        </Border>
+
         <!-- 气泡 -->
         <Border x:Name="Bubble" Background="White" BorderBrush="#F3A3B5" BorderThickness="2"
                 CornerRadius="10" Padding="8,3" Opacity="0" IsHitTestVisible="False">

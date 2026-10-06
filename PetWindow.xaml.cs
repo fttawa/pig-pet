@@ -209,6 +209,23 @@ public partial class PetWindow : Window
         Bubble.BeginAnimation(OpacityProperty, fade);
     }
 
+    /// <summary>在头顶短暂显示血条。</summary>
+    public void ShowHp(double fraction)
+    {
+        double width = PetSize * 0.6;
+        HpBar.Width = width;
+        HpFill.Width = Math.Max(0, (width - 2) * Math.Clamp(fraction, 0, 1));
+        HpFill.Fill = new SolidColorBrush(fraction > 0.6 ? Color.FromRgb(0x4C, 0xAF, 0x50)
+            : fraction > 0.3 ? Color.FromRgb(0xFF, 0xB3, 0x00) : Color.FromRgb(0xE5, 0x39, 0x35));
+        Canvas.SetLeft(HpBar, (Width - width) / 2);
+        Canvas.SetTop(HpBar, Height - PetSize - 14);
+        var fade = new DoubleAnimationUsingKeyFrames();
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(100))));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(1600))));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(2000))));
+        HpBar.BeginAnimation(OpacityProperty, fade);
+    }
+
     public void Particle(string text, Color color, double xRatio = 0.5)
     {
         var tb = new TextBlock
