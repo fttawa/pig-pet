@@ -56,8 +56,9 @@ public partial class PetBrain
     void BoredomStrikes()
     {
         _boredFor = 0;
-        if (C.BoredClone && Herd.Count < C.MaxPets)
+        if (C.BoredClone && Herd.Count < C.MaxPets && (C.BoredCloneLimit <= 0 || _boredClones < C.BoredCloneLimit))
         {
+            _boredClones++;
             Log($"无聊到分裂（兴奋 {Excitement:0}，快乐 {Happiness:0}）");
             w.Say("好无聊……分个身陪我玩", 1800);
             _boredClone = true;
@@ -74,6 +75,8 @@ public partial class PetBrain
     }
 
     bool _boredClone;
+    /// <summary>这次运行里所有猪一共因为无聊自动分裂了几次。</summary>
+    static int _boredClones;
 
     /// <summary>做某个动作时心情的变化。</summary>
     void MoodForAction(string name)

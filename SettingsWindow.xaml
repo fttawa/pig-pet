@@ -90,13 +90,15 @@
                 <TextBlock Text="再次运行程序会从天上掉下一只新猪" Foreground="#999" />
                 <CheckBox x:Name="BoredC" Content="无聊时自动分裂（兴奋值一直很低时分个身陪自己玩）" Margin="0,3" />
                 <DockPanel><TextBlock Text="无聊多少秒后分裂" /><TextBox x:Name="BoredT" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <DockPanel><TextBlock Text="每次运行最多自动分裂几次（0 = 不限）" /><TextBox x:Name="BoredN" DockPanel.Dock="Right" Width="60" /></DockPanel>
 
                 <TextBlock Text="性能" Style="{StaticResource H}" />
-                <DockPanel><TextBlock Text="动画帧率上限（0 = 跟随屏幕）" /><TextBox x:Name="FpsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
+                <DockPanel><TextBlock Text="动画帧率上限（0 = 自动，最高 60；高刷屏想更顺滑可填 144 等）" /><TextBox x:Name="FpsT" DockPanel.Dock="Right" Width="60" /></DockPanel>
                 <TextBlock x:Name="FpsInfo" Foreground="#999" />
 
                 <TextBlock Text="窗口" Style="{StaticResource H}" />
                 <CheckBox x:Name="TopC" Content="总在最前" Margin="0,3" />
+                <CheckBox x:Name="PerPigC" Content="每只猪一个窗口（关掉则每个显示器一个整屏透明窗口；重启后生效）" Margin="0,3" />
                 <CheckBox x:Name="CollideC" Content="窗口碰撞体积（能站在其他程序的窗口上）" Margin="0,3" />
                 <CheckBox x:Name="VisualC" Content="全屏 / 最大化窗口里自动识别能站的地方" Margin="0,3" />
                 <CheckBox x:Name="ElementC" Content="　优先读取界面元素位置（更准，读不到时看画面）" Margin="0,3" />

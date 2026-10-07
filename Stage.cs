@@ -42,8 +42,18 @@ public class Stage : Window
     bool _passThrough = true;
     IntPtr _hwnd;
 
+    /// <summary>每只猪 / 每份食物一个小窗口（Config.WindowPerPig，启动时定下）。</summary>
+    public static bool PerItem { get; private set; }
+    /// <summary>每个东西自己的小窗口（PerItem 模式）。All 仍然是每个显示器一块，只用来算工作区，不显示。</summary>
+    static readonly List<Stage> Own = new();
+    static readonly Dictionary<FrameworkElement, Stage> _own = new();
+    bool _isOwn;
+    /// <summary>小窗口四周留的空白（转圈、贴墙倒挂、气泡会超出控件本身的范围）。</summary>
+    double _pad;
+
     public static void Init()
     {
+        PerItem = Config.Current.WindowPerPig;
         // 系统缩放：主屏物理宽度 / DIP 宽度
         Scale = WinForms.Screen.PrimaryScreen!.Bounds.Width / SystemParameters.PrimaryScreenWidth;
         foreach (var s in WinForms.Screen.AllScreens)
@@ -51,12 +61,12 @@ public class Stage : Window
             var wa = s.WorkingArea;
             var st = new Stage(new Rect(wa.X / Scale, wa.Y / Scale, wa.Width / Scale, wa.Height / Scale));
             All.Add(st);
-            st.Show();
+            if (!PerItem) st.Show();
         }
         _hitTimer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(15) };
         _hitTimer.Tick += (_, _) => UpdatePassThrough();
         _hitTimer.Start();
-        Config.Changed += c => { foreach (var st in All) st.Topmost = c.AlwaysOnTop; };
+        Config.Changed += c => { foreach (var st in All.Concat(Own)) st.Topmost = c.AlwaysOnTop; };
     }
 
     Stage(Rect area)
@@ -134,8 +144,9 @@ public class Stage : Window
     {
         var p = CursorDip();
         bool through = Config.Current.ClickThrough;
-        foreach (var st in All)
+        foreach (var st in All.Concat(Own))
         {
+            if (st._hwnd == IntPtr.Zero) continue;
             bool hit = false;
             if (!through)
             {
@@ -148,7 +159,8 @@ public class Stage : Window
     }
 
     /// <summary>调试：全局 DIP 点 p 是否点得中舞台上的东西。</summary>
-    public static bool DebugHit(Point p) { var st = For(p); return st.HitAt(new Point(p.X - st.Area.X, p.Y - st.Area.Y)); }
+    public static bool DebugHit(Point p) => (PerItem ? Own.Where(s => s.Area.Contains(p)) : new[] { For(p) })
+        .Any(st => st.HitAt(new Point(p.X - st.Area.X, p.Y - st.Area.Y)));
 
     bool HitAt(Point local)
     {
@@ -180,6 +192,7 @@ public class Stage : Window
     public static void Place(FrameworkElement el, double x, double y)
     {
         double w = double.IsNaN(el.Width) ? 0 : el.Width, h = double.IsNaN(el.Height) ? 0 : el.Height;
+        if (PerItem) { PlaceOwn(el, x, y, w, h); return; }
         var st = For(new Point(x + w / 2, y + h / 2));
         // 拖动中不换舞台（会丢掉鼠标捕获），松手后的下一次移动再换
         if (el.Parent != st.Layer && (el.Parent == null || !el.IsMouseCaptureWithin))
@@ -192,10 +205,50 @@ public class Stage : Window
         Canvas.SetTop(el, y - st.Area.Y);
     }
 
-    public static void Remove(FrameworkElement el) => (el.Parent as Panel)?.Children.Remove(el);
+    public static void Remove(FrameworkElement el)
+    {
+        (el.Parent as Panel)?.Children.Remove(el);
+        if (_own.Remove(el, out var st)) { Own.Remove(st); st.Close(); }
+    }
 
     /// <summary>移到最上层（叠罗汉时上面的猪要盖住下面那只）。</summary>
-    public static void BringToFront(UIElement el) => Panel.SetZIndex(el, ++_z);
+    public static void BringToFront(UIElement el)
+    {
+        Panel.SetZIndex(el, ++_z);
+        if (el is FrameworkElement fe && _own.TryGetValue(fe, out var st) && st._hwnd != IntPtr.Zero)
+            SetWindowPos(st._hwnd, st.Topmost ? new IntPtr(-1) : IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    // ---------- 一个东西一个窗口 ----------
+    // 窗口只比东西本身大一圈，跟着它移动（只挪位置，不改大小，不会闪）；
+    // 东西在窗口画布里的位置固定在 (pad, pad)。
+    static void PlaceOwn(FrameworkElement el, double x, double y, double w, double h)
+    {
+        double pad = Math.Max(w, h) / 2;
+        var area = new Rect(x - pad, y - pad, w + 2 * pad, h + 2 * pad);
+        if (!_own.TryGetValue(el, out var st))
+        {
+            st = new Stage(area) { _isOwn = true, _pad = pad };
+            _own[el] = st; Own.Add(st);
+            (el.Parent as Panel)?.Children.Remove(el);
+            st.Layer.Children.Add(el);
+            Canvas.SetLeft(el, pad); Canvas.SetTop(el, pad);
+            st.Show();
+            return;
+        }
+        if (pad != st._pad) { st._pad = pad; Canvas.SetLeft(el, pad); Canvas.SetTop(el, pad); }
+        st.MoveOwn(area);
+    }
+
+    void MoveOwn(Rect area)
+    {
+        bool resize = Math.Abs(area.Width - Area.Width) > 0.01 || Math.Abs(area.Height - Area.Height) > 0.01;
+        Area = area;
+        if (_hwnd == IntPtr.Zero) { Left = area.X; Top = area.Y; Width = area.Width; Height = area.Height; return; }
+        SetWindowPos(_hwnd, IntPtr.Zero, (int)Math.Round(area.X * Scale), (int)Math.Round(area.Y * Scale),
+            (int)Math.Round(area.Width * Scale), (int)Math.Round(area.Height * Scale),
+            SWP_NOZORDER | SWP_NOACTIVATE | (resize ? 0 : SWP_NOSIZE));
+    }
 
     /// <summary>光标位置（全局 DIP）。</summary>
     public static Point CursorDip()
@@ -206,7 +259,7 @@ public class Stage : Window
 
     // ---------- Win32 ----------
     const int GWL_EXSTYLE = -20, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_LAYERED = 0x80000, WS_EX_NOACTIVATE = 0x08000000;
-    const uint LWA_ALPHA = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+    const uint LWA_ALPHA = 0x2, SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
     [StructLayout(LayoutKind.Sequential)] struct MARGINS { public int L, R, T, B; }
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
     [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr h, ref MARGINS m);

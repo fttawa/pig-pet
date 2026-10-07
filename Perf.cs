@@ -27,7 +27,8 @@ public static class Perf
         get
         {
             int limit = Config.Current.FpsLimit;
-            return limit > 0 ? Math.Min(limit, MonitorHz) : MonitorHz;
+            // 0 = 自动：跟随屏幕但最高 60 帧（高刷屏上跑满 144/240 帧会给核显和桌面合成带来不小负担）
+            return limit > 0 ? Math.Min(limit, MonitorHz) : Math.Min(60, MonitorHz);
         }
     }
 

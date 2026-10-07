@@ -29,7 +29,7 @@ public class Config
     public bool VisualLedges { get; set; } = true;    // 全屏 / 最大化窗口里看画面找能站的边缘
     public bool ElementLedges { get; set; } = true;   // 优先用 UI Automation 读取元素位置
     public double LedgeThreshold { get; set; } = 40;  // 画面边缘的亮度差阈值，越小越容易站
-    public int FpsLimit { get; set; }              // 动画帧率上限，0 = 跟随屏幕刷新率
+    public int FpsLimit { get; set; }              // 动画帧率上限，0 = 自动（跟随屏幕，最高 60）
     public bool HpEnabled { get; set; } = true;    // 隐藏血条：摔太狠会死
     public double MaxHp { get; set; } = 100;       // 耐摔程度
     public double HpRegen { get; set; } = 3;       // 每秒回血
@@ -41,6 +41,8 @@ public class Config
     public bool RoamMode { get; set; }               // 满屏漫游模式：大部分时间沿屏幕四周爬
     public bool BoredClone { get; set; } = true;     // 无聊时自动分裂
     public double BoredAfter { get; set; } = 90;     // 兴奋值持续很低多少秒算无聊
+    public int BoredCloneLimit { get; set; } = 1;    // 每次运行最多自动分裂几次，0 = 不限
+    public bool WindowPerPig { get; set; } = true;   // 每只猪 / 每份食物一个小窗口（关掉 = 每个显示器一个整屏舞台），重启生效
     public bool FoodBar { get; set; } = true;        // 显示食物悬浮栏
     public double? FoodBarX { get; set; }            // 悬浮栏位置（DIP），null = 默认右上
     public double? FoodBarY { get; set; }
