@@ -83,7 +83,7 @@ public partial class PetBrain
                 "clone" => Clone(ct), "visit" => Visit(ct), "greet" => GreetInvited(ct), "pile" => Pile(ct),
                 "beneath" => Beneath(ct), "chase" => Chase(ct), "follow" => Follow(ct), "merge" => Merge(ct),
                 "merge-out" => MergeOut(ct), "duel" => Duel(ct), "duel-b" => DuelFollower(ct),
-                "eat" => Eat(ct), "hopoff" => HopOff(ct), "status" => Status(ct), "roam" => Roam(ct),
+                "eat" => Eat(ct), "hopoff" => HopOff(ct), "status" => Status(ct), "roam" => Roam(ct), "chomp" => Chomp(ct),
                 _ when name.StartsWith("feed:") => Feed(name[5..], ct),
                 // 调试：weight:N 直接设定体重
                 _ when name.StartsWith("weight:") && double.TryParse(name[7..], out var kg) => SetWeight(kg, ct),

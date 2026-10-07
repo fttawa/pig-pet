@@ -53,6 +53,17 @@ public partial class PetWindow : UserControl, IStageItem
         Config.Changed += _onConfig;
 
         Pig.MouseLeftButtonDown += OnDown;
+        // 回收站：把文件拖到猪身上
+        AllowDrop = true;
+        DragEnter += (_, e) => { if (e.Data.GetDataPresent(DataFormats.FileDrop)) Brain.FileHover(); };
+        DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+        Drop += (_, e) =>
+        {
+            if (e.Data.GetData(DataFormats.FileDrop) is not string[] files) return;
+            e.Handled = true;
+            // 先让资源管理器的拖放结束，再弹确认框（在拖放回调里弹框会卡住资源管理器）
+            Dispatcher.BeginInvoke(() => Brain.EatFiles(files));
+        };
         Pig.MouseMove += OnMove;
         Pig.MouseLeftButtonUp += OnUp;
         Pig.LostMouseCapture += (_, _) => Release();
